@@ -1,0 +1,9 @@
+.env.local
+node_modules
+.next
+.claude
+.agents
+AGENTS.md
+CLAUDE.md
+skills-lock.json
+convex/_generated
