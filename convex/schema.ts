@@ -2,6 +2,41 @@ import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
 
 export default defineSchema({
+  // Singleton row created by the first-run setup wizard. Its existence (and
+  // setupComplete flag) is what decides whether new visitors get sent to
+  // /admin/setup or the normal student login.
+  institutionConfig: defineTable({
+    institutionName: v.string(),
+    // Email domains allowed to sign in, e.g. ["student.edu", "alumni.edu"].
+    // Stored without the "@".
+    allowedDomains: v.array(v.string()),
+    adminPasswordSalt: v.string(),
+    adminPasswordHash: v.string(),
+    setupComplete: v.boolean(),
+    createdAt: v.number(),
+  }),
+
+  // Lightweight admin session tokens (separate from student mock-auth).
+  // Client stores the token and passes it back on every admin
+  // query/mutation; the server validates it hasn't expired.
+  adminSessions: defineTable({
+    token: v.string(),
+    createdAt: v.number(),
+    expiresAt: v.number(),
+  }).index("by_token", ["token"]),
+
+  // Institution-wide audit trail: role/topic/channel lifecycle events.
+  // Deliberately does NOT log message/thread content — that stays the
+  // responsibility of individual topic owners/moderators.
+  auditLogs: defineTable({
+    type: v.string(), // "topic_created" | "topic_deleted" | "channel_created" | ...
+    message: v.string(), // human-readable summary shown in the dashboard
+    actorId: v.optional(v.id("users")),
+    actorLabel: v.optional(v.string()), // e.g. "Admin" for admin-initiated actions
+    topicId: v.optional(v.id("topics")),
+    createdAt: v.number(),
+  }).index("by_createdAt", ["createdAt"]),
+
   // Students / alumni. In the mock-auth MVP this is created on "login"
   // by email lookup. Swap for real SSO later without changing the shape.
   users: defineTable({
@@ -16,10 +51,11 @@ export default defineSchema({
   interests: defineTable({
     label: v.string(),
     category: v.union(
+      v.literal("major"),
       v.literal("class"),
       v.literal("club"),
       v.literal("hobby"),
-      v.literal("other")
+      v.literal("other"),
     ),
   }),
 
@@ -46,7 +82,11 @@ export default defineSchema({
   topicMembers: defineTable({
     topicId: v.id("topics"),
     userId: v.id("users"),
-    role: v.union(v.literal("owner"), v.literal("moderator"), v.literal("member")),
+    role: v.union(
+      v.literal("owner"),
+      v.literal("moderator"),
+      v.literal("member"),
+    ),
     joinedAt: v.number(),
   })
     .index("by_topic", ["topicId"])

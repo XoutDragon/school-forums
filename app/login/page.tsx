@@ -1,8 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useMutation } from "convex/react";
+import { useMutation, useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { useSession } from "@/lib/session";
 
@@ -10,25 +11,43 @@ export default function LoginPage() {
   const router = useRouter();
   const { login } = useSession();
   const loginOrCreate = useMutation(api.users.loginOrCreate);
+  const config = useQuery(api.admin.getConfig);
 
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // If this instance hasn't been configured yet, send whoever lands here
+  // to the setup wizard instead of letting them try to sign in.
+  useEffect(() => {
+    if (config !== undefined && (!config || !config.setupComplete)) {
+      router.replace("/admin/setup");
+    }
+  }, [config, router]);
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
 
-    // MVP domain check placeholder — swap for real SSO validation later.
-    if (!email.endsWith("@student.edu") && !email.endsWith("@alumni.edu")) {
-      setError("Please use your school (@student.edu) or alumni (@alumni.edu) email.");
+    const domains = config?.allowedDomains ?? [];
+    const normalizedEmail = email.trim().toLowerCase();
+    const matchesDomain = domains.some((d) =>
+      normalizedEmail.endsWith(`@${d}`),
+    );
+
+    if (!matchesDomain) {
+      setError(
+        domains.length > 0
+          ? `Please use an email ending in ${domains.map((d) => `@${d}`).join(" or ")}.`
+          : "Sign-in isn't configured for this instance yet.",
+      );
       return;
     }
 
     setSubmitting(true);
     try {
-      const userId = await loginOrCreate({ name, email });
+      const userId = await loginOrCreate({ name, email: normalizedEmail });
       login(userId);
       router.push("/");
     } finally {
@@ -43,13 +62,22 @@ export default function LoginPage() {
           <div className="w-12 h-12 rounded-xl bg-accent mx-auto mb-4 flex items-center justify-center text-xl font-semibold">
             CH
           </div>
-          <h1 className="text-xl font-semibold text-text">Sign in to Campus Hub</h1>
-          <p className="text-sm text-muted mt-1">Use your school or alumni email to continue.</p>
+          <h1 className="text-xl font-semibold text-text">
+            Sign in to {config?.institutionName ?? "Campus Hub"}
+          </h1>
+          <p className="text-sm text-muted mt-1">
+            Use your school or alumni email to continue.
+          </p>
         </div>
 
-        <form onSubmit={handleSubmit} className="bg-panel border border-border rounded-xl p-6 space-y-4">
+        <form
+          onSubmit={handleSubmit}
+          className="bg-panel border border-border rounded-xl p-6 space-y-4"
+        >
           <div>
-            <label className="block text-xs font-medium text-muted mb-1.5">Full name</label>
+            <label className="block text-xs font-medium text-muted mb-1.5">
+              Full name
+            </label>
             <input
               required
               value={name}
@@ -60,13 +88,19 @@ export default function LoginPage() {
           </div>
 
           <div>
-            <label className="block text-xs font-medium text-muted mb-1.5">School email</label>
+            <label className="block text-xs font-medium text-muted mb-1.5">
+              School email
+            </label>
             <input
               required
               type="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              placeholder="jsmith@student.edu"
+              placeholder={
+                config?.allowedDomains?.[0]
+                  ? `jsmith@${config.allowedDomains[0]}`
+                  : "jsmith@school.edu"
+              }
               className="w-full rounded-lg bg-panel2 border border-border px-3 py-2 text-sm text-text outline-none focus:border-accent"
             />
           </div>
@@ -82,9 +116,19 @@ export default function LoginPage() {
           </button>
 
           <p className="text-[11px] text-muted text-center pt-1">
-            Mock auth for MVP — any @student.edu / @alumni.edu email works. Swap in real SSO before launch.
+            Mock auth for MVP — any email on an approved domain works. Swap in
+            real SSO before launch.
           </p>
         </form>
+
+        <p className="text-center mt-4">
+          <Link
+            href="/admin/login"
+            className="text-[11px] text-muted hover:text-text"
+          >
+            IT staff — admin login
+          </Link>
+        </p>
       </div>
     </main>
   );

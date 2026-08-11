@@ -1,12 +1,18 @@
 import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
+import { logEvent } from "./log";
 
 async function requireModOrOwner(ctx: any, topicId: any, userId: any) {
   const membership = await ctx.db
     .query("topicMembers")
-    .withIndex("by_topic_and_user", (q: any) => q.eq("topicId", topicId).eq("userId", userId))
+    .withIndex("by_topic_and_user", (q: any) =>
+      q.eq("topicId", topicId).eq("userId", userId),
+    )
     .unique();
-  if (!membership || (membership.role !== "owner" && membership.role !== "moderator")) {
+  if (
+    !membership ||
+    (membership.role !== "owner" && membership.role !== "moderator")
+  ) {
     throw new Error("Only the topic owner or moderators can manage channels.");
   }
 }
@@ -44,12 +50,27 @@ export const create = mutation({
       .withIndex("by_topic", (q) => q.eq("topicId", topicId))
       .collect();
 
-    return await ctx.db.insert("channels", {
+    const channelId = await ctx.db.insert("channels", {
       topicId,
       name: name.trim(),
       type,
       order: existing.length,
     });
+
+    const [actor, topic] = await Promise.all([
+      ctx.db.get(userId),
+      ctx.db.get(topicId),
+    ]);
+    await logEvent(ctx, {
+      type: "channel_created",
+      message: `${actor?.name ?? "Someone"} created ${type} channel "${name.trim()}" in "${
+        topic?.name ?? "a topic"
+      }"`,
+      actorId: userId,
+      topicId,
+    });
+
+    return channelId;
   },
 });
 
@@ -60,5 +81,18 @@ export const remove = mutation({
     if (!channel) return;
     await requireModOrOwner(ctx, channel.topicId, userId);
     await ctx.db.delete(channelId);
+
+    const [actor, topic] = await Promise.all([
+      ctx.db.get(userId),
+      ctx.db.get(channel.topicId),
+    ]);
+    await logEvent(ctx, {
+      type: "channel_deleted",
+      message: `${actor?.name ?? "Someone"} deleted channel "${channel.name}" in "${
+        topic?.name ?? "a topic"
+      }"`,
+      actorId: userId,
+      topicId: channel.topicId,
+    });
   },
 });

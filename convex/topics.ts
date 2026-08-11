@@ -1,12 +1,18 @@
 import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
+import { logEvent } from "./log";
+import { requireAdminSession } from "./admin";
 
 // --- Discovery feeds -------------------------------------------------
 
 export const listNew = query({
   args: {},
   handler: async (ctx) => {
-    return await ctx.db.query("topics").withIndex("by_createdAt").order("desc").take(20);
+    return await ctx.db
+      .query("topics")
+      .withIndex("by_createdAt")
+      .order("desc")
+      .take(20);
   },
 });
 
@@ -49,7 +55,9 @@ export const getMembership = query({
   handler: async (ctx, { topicId, userId }) => {
     return await ctx.db
       .query("topicMembers")
-      .withIndex("by_topic_and_user", (q) => q.eq("topicId", topicId).eq("userId", userId))
+      .withIndex("by_topic_and_user", (q) =>
+        q.eq("topicId", topicId).eq("userId", userId),
+      )
       .unique();
   },
 });
@@ -62,7 +70,10 @@ export const listMembers = query({
       .withIndex("by_topic", (q) => q.eq("topicId", topicId))
       .collect();
     const users = await Promise.all(
-      rows.map(async (r) => ({ ...(await ctx.db.get(r.userId)), role: r.role }))
+      rows.map(async (r) => ({
+        ...(await ctx.db.get(r.userId)),
+        role: r.role,
+      })),
     );
     return users;
   },
@@ -73,7 +84,9 @@ export const join = mutation({
   handler: async (ctx, { topicId, userId }) => {
     const existing = await ctx.db
       .query("topicMembers")
-      .withIndex("by_topic_and_user", (q) => q.eq("topicId", topicId).eq("userId", userId))
+      .withIndex("by_topic_and_user", (q) =>
+        q.eq("topicId", topicId).eq("userId", userId),
+      )
       .unique();
     if (existing) return existing._id;
 
@@ -81,6 +94,14 @@ export const join = mutation({
     if (!topic) throw new Error("Topic not found");
 
     await ctx.db.patch(topicId, { memberCount: topic.memberCount + 1 });
+
+    const member = await ctx.db.get(userId);
+    await logEvent(ctx, {
+      type: "member_joined",
+      message: `${member?.name ?? "Someone"} joined "${topic.name}"`,
+      actorId: userId,
+      topicId,
+    });
 
     return await ctx.db.insert("topicMembers", {
       topicId,
@@ -96,15 +117,30 @@ export const leave = mutation({
   handler: async (ctx, { topicId, userId }) => {
     const membership = await ctx.db
       .query("topicMembers")
-      .withIndex("by_topic_and_user", (q) => q.eq("topicId", topicId).eq("userId", userId))
+      .withIndex("by_topic_and_user", (q) =>
+        q.eq("topicId", topicId).eq("userId", userId),
+      )
       .unique();
     if (!membership) return;
     if (membership.role === "owner") {
-      throw new Error("Owners can't leave their own topic yet — transfer ownership first.");
+      throw new Error(
+        "Owners can't leave their own topic yet — transfer ownership first.",
+      );
     }
 
     const topic = await ctx.db.get(topicId);
-    if (topic) await ctx.db.patch(topicId, { memberCount: Math.max(0, topic.memberCount - 1) });
+    if (topic)
+      await ctx.db.patch(topicId, {
+        memberCount: Math.max(0, topic.memberCount - 1),
+      });
+
+    const member = await ctx.db.get(userId);
+    await logEvent(ctx, {
+      type: "member_left",
+      message: `${member?.name ?? "Someone"} left "${topic?.name ?? "a topic"}"`,
+      actorId: userId,
+      topicId,
+    });
 
     await ctx.db.delete(membership._id);
   },
@@ -154,6 +190,135 @@ export const create = mutation({
       // voiceRoomName gets set once LiveKit (or similar) provisioning is wired up.
     });
 
+    const creator = await ctx.db.get(createdBy);
+    await logEvent(ctx, {
+      type: "topic_created",
+      message: `${creator?.name ?? "A student"} created topic "${name.trim()}"`,
+      actorId: createdBy,
+      topicId,
+    });
+
     return topicId;
+  },
+});
+
+// --- Admin-only management --------------------------------------------------
+// Gated by admin session token (see convex/admin.ts) rather than a user id,
+// since IT staff managing this aren't necessarily topic members themselves.
+
+export const adminChangeRole = mutation({
+  args: {
+    adminToken: v.string(),
+    topicId: v.id("topics"),
+    userId: v.id("users"),
+    role: v.union(
+      v.literal("owner"),
+      v.literal("moderator"),
+      v.literal("member"),
+    ),
+  },
+  handler: async (ctx, { adminToken, topicId, userId, role }) => {
+    await requireAdminSession(ctx, adminToken);
+
+    const membership = await ctx.db
+      .query("topicMembers")
+      .withIndex("by_topic_and_user", (q) =>
+        q.eq("topicId", topicId).eq("userId", userId),
+      )
+      .unique();
+    if (!membership) throw new Error("That user isn't a member of this topic.");
+
+    await ctx.db.patch(membership._id, { role });
+
+    const [user, topic] = await Promise.all([
+      ctx.db.get(userId),
+      ctx.db.get(topicId),
+    ]);
+    await logEvent(ctx, {
+      type: "role_changed",
+      message: `Admin set ${user?.name ?? "a member"}'s role to "${role}" in "${topic?.name ?? "a topic"}"`,
+      actorLabel: "Admin",
+      topicId,
+    });
+  },
+});
+
+export const adminRemoveMember = mutation({
+  args: {
+    adminToken: v.string(),
+    topicId: v.id("topics"),
+    userId: v.id("users"),
+  },
+  handler: async (ctx, { adminToken, topicId, userId }) => {
+    await requireAdminSession(ctx, adminToken);
+
+    const membership = await ctx.db
+      .query("topicMembers")
+      .withIndex("by_topic_and_user", (q) =>
+        q.eq("topicId", topicId).eq("userId", userId),
+      )
+      .unique();
+    if (!membership) return;
+
+    const topic = await ctx.db.get(topicId);
+    if (topic)
+      await ctx.db.patch(topicId, {
+        memberCount: Math.max(0, topic.memberCount - 1),
+      });
+    await ctx.db.delete(membership._id);
+
+    const user = await ctx.db.get(userId);
+    await logEvent(ctx, {
+      type: "member_removed",
+      message: `Admin removed ${user?.name ?? "a member"} from "${topic?.name ?? "a topic"}"`,
+      actorLabel: "Admin",
+      topicId,
+    });
+  },
+});
+
+export const adminDeleteTopic = mutation({
+  args: { adminToken: v.string(), topicId: v.id("topics") },
+  handler: async (ctx, { adminToken, topicId }) => {
+    await requireAdminSession(ctx, adminToken);
+
+    const topic = await ctx.db.get(topicId);
+    if (!topic) return;
+
+    const [members, channels] = await Promise.all([
+      ctx.db
+        .query("topicMembers")
+        .withIndex("by_topic", (q) => q.eq("topicId", topicId))
+        .collect(),
+      ctx.db
+        .query("channels")
+        .withIndex("by_topic", (q) => q.eq("topicId", topicId))
+        .collect(),
+    ]);
+
+    for (const channel of channels) {
+      const threads = await ctx.db
+        .query("threads")
+        .withIndex("by_channel", (q) => q.eq("channelId", channel._id))
+        .collect();
+      for (const thread of threads) {
+        const posts = await ctx.db
+          .query("posts")
+          .withIndex("by_thread", (q) => q.eq("threadId", thread._id))
+          .collect();
+        await Promise.all(posts.map((p) => ctx.db.delete(p._id)));
+        await ctx.db.delete(thread._id);
+      }
+      await ctx.db.delete(channel._id);
+    }
+
+    await Promise.all(members.map((m) => ctx.db.delete(m._id)));
+    await ctx.db.delete(topicId);
+
+    await logEvent(ctx, {
+      type: "topic_deleted",
+      message: `Admin deleted topic "${topic.name}"`,
+      actorLabel: "Admin",
+    });
   },
 });

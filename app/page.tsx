@@ -9,9 +9,15 @@ import { useSession } from "@/lib/session";
 export default function Home() {
   const router = useRouter();
   const { userId, loaded } = useSession();
+  const config = useQuery(api.admin.getConfig);
   const user = useQuery(api.users.getUser, userId ? { userId } : "skip");
 
   useEffect(() => {
+    if (config === undefined) return; // still loading
+    if (!config || !config.setupComplete) {
+      router.replace("/admin/setup");
+      return;
+    }
     if (!loaded) return;
     if (!userId) {
       router.replace("/login");
@@ -23,7 +29,7 @@ export default function Home() {
       return;
     }
     router.replace(user.onboarded ? "/discover" : "/onboarding");
-  }, [loaded, userId, user, router]);
+  }, [loaded, userId, user, router, config]);
 
   return (
     <main className="min-h-screen flex items-center justify-center bg-bg text-muted">
