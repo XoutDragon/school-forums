@@ -112,9 +112,24 @@ export default defineSchema({
     createdAt: v.number(),
     pinned: v.boolean(),
     replyCount: v.number(),
+    // Cached upvotes-minus-downvotes so the forum feed can sort without
+    // reading every vote row. Optional because threads created before
+    // voting existed don't have it — treat missing as 0.
+    score: v.optional(v.number()),
   })
     .index("by_channel", ["channelId"])
     .index("by_topic", ["topicId"]),
+
+  // One row per (thread, user) vote. value is +1 or -1; removing a vote
+  // deletes the row rather than storing 0.
+  threadVotes: defineTable({
+    threadId: v.id("threads"),
+    userId: v.id("users"),
+    value: v.number(),
+  })
+    .index("by_thread", ["threadId"])
+    .index("by_user", ["userId"])
+    .index("by_thread_and_user", ["threadId", "userId"]),
 
   posts: defineTable({
     threadId: v.id("threads"),

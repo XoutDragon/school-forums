@@ -1,18 +1,22 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import { useMutation, useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { Id } from "@/convex/_generated/dataModel";
 import { useSession } from "@/lib/session";
-import ChannelSidebar from "@/components/ChannelSidebar";
-import TextChannelView from "@/components/TextChannelView";
+import ChannelSidebar, { Selection } from "@/components/ChannelSidebar";
+import ThreadFeed from "@/components/ThreadFeed";
+import ThreadView from "@/components/ThreadView";
 import VoiceChannelView from "@/components/VoiceChannelView";
+import MemberList from "@/components/MemberList";
+import TopicSettingsModal from "@/components/TopicSettingsModal";
 
 export default function TopicPage() {
   const { topicId } = useParams<{ topicId: Id<"topics"> }>();
   const { userId } = useSession();
+  const router = useRouter();
 
   const topic = useQuery(api.topics.get, { topicId });
   const channels = useQuery(api.channels.listByTopic, { topicId });
@@ -21,16 +25,13 @@ export default function TopicPage() {
     userId ? { topicId, userId } : "skip"
   );
   const join = useMutation(api.topics.join);
+  const leave = useMutation(api.topics.leave);
 
-  const [selectedChannelId, setSelectedChannelId] = useState<Id<"channels"> | null>(null);
-
-  // Default to the first text channel once channels load.
-  useEffect(() => {
-    if (!selectedChannelId && channels && channels.length > 0) {
-      const firstText = channels.find((c) => c.type === "text") ?? channels[0];
-      setSelectedChannelId(firstText._id);
-    }
-  }, [channels, selectedChannelId]);
+  // The reddit-style forum feed is the landing view, mirroring where it sits
+  // in the sidebar (above the channel list).
+  const [selection, setSelection] = useState<Selection>({ kind: "forum" });
+  const [openThreadId, setOpenThreadId] = useState<Id<"threads"> | null>(null);
+  const [showSettings, setShowSettings] = useState(false);
 
   // Auto-join on visit for this MVP (public topics). Swap for a "Join" button
   // + approval flow if you want private/invite-only topics later.
@@ -40,8 +41,24 @@ export default function TopicPage() {
     }
   }, [userId, membership, join, topicId]);
 
-  const selectedChannel = channels?.find((c) => c._id === selectedChannelId);
-  const canManage = membership?.role === "owner" || membership?.role === "moderator";
+  // If the selected channel disappears (deleted by a mod), fall back to the feed.
+  useEffect(() => {
+    if (
+      selection.kind === "channel" &&
+      channels &&
+      !channels.some((c) => c._id === selection.channelId)
+    ) {
+      setSelection({ kind: "forum" });
+      setOpenThreadId(null);
+    }
+  }, [channels, selection]);
+
+  const role = membership?.role ?? null;
+  const canManage = role === "owner" || role === "moderator";
+  const selectedChannel =
+    selection.kind === "channel"
+      ? channels?.find((c) => c._id === selection.channelId)
+      : undefined;
 
   if (!topic || !channels || !userId) {
     return (
@@ -51,25 +68,63 @@ export default function TopicPage() {
     );
   }
 
+  const textChannels = channels.filter((c) => c.type === "text");
+
+  async function handleLeave() {
+    if (!userId) return;
+    if (!window.confirm(`Leave "${topic!.name}"?`)) return;
+    await leave({ topicId, userId });
+    router.push("/discover");
+  }
+
   return (
-    <main className="min-h-screen flex bg-background">
+    <main className="h-screen flex bg-background overflow-hidden">
       <ChannelSidebar
         topic={topic}
         channels={channels}
-        selectedChannelId={selectedChannelId}
-        onSelect={setSelectedChannelId}
+        selection={selection}
+        onSelect={(next) => {
+          setSelection(next);
+          setOpenThreadId(null);
+        }}
         userId={userId}
-        canManage={canManage}
+        role={role}
+        onOpenSettings={() => setShowSettings(true)}
+        onLeave={handleLeave}
       />
 
-      {selectedChannel?.type === "text" && (
-        <TextChannelView channel={selectedChannel} userId={userId} />
+      {openThreadId ? (
+        <ThreadView
+          threadId={openThreadId}
+          userId={userId}
+          canModerate={canManage}
+          onBack={() => setOpenThreadId(null)}
+          onDeleted={() => setOpenThreadId(null)}
+        />
+      ) : selectedChannel?.type === "voice" ? (
+        <VoiceChannelView channel={selectedChannel} />
+      ) : (
+        <ThreadFeed
+          topic={topic}
+          channel={selectedChannel ?? null}
+          textChannels={textChannels}
+          userId={userId}
+          canModerate={canManage}
+          onOpenThread={setOpenThreadId}
+        />
       )}
-      {selectedChannel?.type === "voice" && <VoiceChannelView channel={selectedChannel} />}
-      {!selectedChannel && (
-        <div className="flex-1 flex items-center justify-center text-muted-foreground text-sm">
-          Select a channel
-        </div>
+
+      <MemberList topicId={topicId} viewerId={userId} viewerRole={role} />
+
+      {showSettings && (role === "owner" || role === "moderator") && (
+        <TopicSettingsModal
+          topic={topic}
+          channels={channels}
+          userId={userId}
+          role={role}
+          onClose={() => setShowSettings(false)}
+          onDeleted={() => router.push("/discover")}
+        />
       )}
     </main>
   );

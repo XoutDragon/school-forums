@@ -1,21 +1,7 @@
 import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
 import { logEvent } from "./log";
-
-async function requireModOrOwner(ctx: any, topicId: any, userId: any) {
-  const membership = await ctx.db
-    .query("topicMembers")
-    .withIndex("by_topic_and_user", (q: any) =>
-      q.eq("topicId", topicId).eq("userId", userId),
-    )
-    .unique();
-  if (
-    !membership ||
-    (membership.role !== "owner" && membership.role !== "moderator")
-  ) {
-    throw new Error("Only the topic owner or moderators can manage channels.");
-  }
-}
+import { requireModOrOwner } from "./permissions";
 
 export const listByTopic = query({
   args: { topicId: v.id("topics") },
@@ -74,12 +60,69 @@ export const create = mutation({
   },
 });
 
+export const rename = mutation({
+  args: {
+    channelId: v.id("channels"),
+    userId: v.id("users"),
+    name: v.string(),
+  },
+  handler: async (ctx, { channelId, userId, name }) => {
+    const channel = await ctx.db.get(channelId);
+    if (!channel) throw new Error("Channel not found");
+    await requireModOrOwner(ctx, channel.topicId, userId);
+
+    const trimmed = name.trim();
+    if (!trimmed) throw new Error("Channel name can't be empty.");
+    if (trimmed === channel.name) return;
+
+    await ctx.db.patch(channelId, { name: trimmed });
+
+    const [actor, topic] = await Promise.all([
+      ctx.db.get(userId),
+      ctx.db.get(channel.topicId),
+    ]);
+    await logEvent(ctx, {
+      type: "channel_renamed",
+      message: `${actor?.name ?? "Someone"} renamed channel "${channel.name}" to "${trimmed}" in "${
+        topic?.name ?? "a topic"
+      }"`,
+      actorId: userId,
+      topicId: channel.topicId,
+    });
+  },
+});
+
 export const remove = mutation({
   args: { channelId: v.id("channels"), userId: v.id("users") },
   handler: async (ctx, { channelId, userId }) => {
     const channel = await ctx.db.get(channelId);
     if (!channel) return;
     await requireModOrOwner(ctx, channel.topicId, userId);
+
+    // Take the channel's threads (and their posts/votes) with it, otherwise
+    // they'd linger as orphans in the topic-wide forum feed.
+    const threads = await ctx.db
+      .query("threads")
+      .withIndex("by_channel", (q) => q.eq("channelId", channelId))
+      .collect();
+    for (const thread of threads) {
+      const [posts, votes] = await Promise.all([
+        ctx.db
+          .query("posts")
+          .withIndex("by_thread", (q) => q.eq("threadId", thread._id))
+          .collect(),
+        ctx.db
+          .query("threadVotes")
+          .withIndex("by_thread", (q) => q.eq("threadId", thread._id))
+          .collect(),
+      ]);
+      await Promise.all([
+        ...posts.map((p) => ctx.db.delete(p._id)),
+        ...votes.map((vote) => ctx.db.delete(vote._id)),
+      ]);
+      await ctx.db.delete(thread._id);
+    }
+
     await ctx.db.delete(channelId);
 
     const [actor, topic] = await Promise.all([
