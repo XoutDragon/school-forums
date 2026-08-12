@@ -1,9 +1,11 @@
 .env.local
 node_modules
 .next
+tsconfig.tsbuildinfo
 .claude
 .agents
 AGENTS.md
 CLAUDE.md
 skills-lock.json
 convex/_generated
+package-lock.json

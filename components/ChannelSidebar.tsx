@@ -37,10 +37,10 @@ export default function ChannelSidebar({
   }
 
   return (
-    <aside className="w-56 shrink-0 bg-panel border-r border-border flex flex-col">
+    <aside className="w-56 shrink-0 bg-card border-r border-border flex flex-col">
       <div className="px-4 py-4 border-b border-border">
-        <h2 className="text-sm font-semibold text-text truncate">{topic.name}</h2>
-        <p className="text-[11px] text-muted mt-0.5">{topic.memberCount} members</p>
+        <h2 className="text-sm font-semibold text-foreground truncate">{topic.name}</h2>
+        <p className="text-[11px] text-muted-foreground mt-0.5">{topic.memberCount} members</p>
       </div>
 
       <div className="flex-1 overflow-y-auto py-3 px-2">
@@ -73,9 +73,9 @@ export default function ChannelSidebar({
 function SectionLabel({ label, onAdd }: { label: string; onAdd?: () => void }) {
   return (
     <div className="flex items-center justify-between px-2 mt-3 mb-1">
-      <span className="text-[11px] font-medium text-muted uppercase tracking-wide">{label}</span>
+      <span className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide">{label}</span>
       {onAdd && (
-        <button onClick={onAdd} className="text-muted hover:text-text text-sm leading-none">
+        <button onClick={onAdd} className="text-muted-foreground hover:text-foreground text-sm leading-none">
           +
         </button>
       )}
@@ -97,7 +97,7 @@ function ChannelRow({
       onClick={() => onSelect(channel._id)}
       className={clsx(
         "w-full flex items-center gap-2 px-2 py-1.5 rounded-md text-sm text-left",
-        active ? "bg-panel2 text-text" : "text-muted hover:bg-panel2/60 hover:text-text"
+        active ? "bg-secondary text-foreground" : "text-muted-foreground hover:bg-secondary/60 hover:text-foreground"
       )}
     >
       <span className="opacity-70">{channel.type === "text" ? "#" : "🔊"}</span>
@@ -119,16 +119,16 @@ function NewChannelInput({
 }) {
   return (
     <div className="flex items-center gap-1.5 px-2 py-1">
-      <span className="text-muted text-sm">{prefix}</span>
+      <span className="text-muted-foreground text-sm">{prefix}</span>
       <input
         autoFocus
         value={name}
         onChange={(e) => setName(e.target.value)}
         onKeyDown={(e) => e.key === "Enter" && onSubmit()}
         placeholder="new-channel"
-        className="flex-1 bg-panel2 border border-border rounded px-2 py-1 text-xs text-text outline-none focus:border-accent"
+        className="flex-1 bg-secondary border border-border rounded px-2 py-1 text-xs text-foreground outline-none focus:border-primary"
       />
-      <button onClick={onSubmit} className="text-xs text-accent">
+      <button onClick={onSubmit} className="text-xs text-primary">
         Add
       </button>
     </div>

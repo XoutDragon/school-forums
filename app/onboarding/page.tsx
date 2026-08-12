@@ -55,18 +55,18 @@ export default function OnboardingPage() {
   );
 
   return (
-    <main className="min-h-screen bg-bg px-4 py-12">
+    <main className="min-h-screen bg-background px-4 py-12">
       <div className="max-w-2xl mx-auto">
-        <h1 className="text-2xl font-semibold text-text mb-1">
+        <h1 className="text-2xl font-semibold text-foreground mb-1">
           What are you into?
         </h1>
-        <p className="text-sm text-muted mb-8">
+        <p className="text-sm text-muted-foreground mb-8">
           Pick a few classes, clubs, and interests. We'll use these to recommend
           topics — you can change this anytime.
         </p>
 
         {interests === undefined && (
-          <p className="text-sm text-muted">Loading interests...</p>
+          <p className="text-sm text-muted-foreground">Loading interests...</p>
         )}
 
         {Object.entries(grouped)
@@ -75,7 +75,7 @@ export default function OnboardingPage() {
           )
           .map(([category, items]) => (
             <div key={category} className="mb-6">
-              <h2 className="text-xs font-medium text-muted uppercase tracking-wide mb-2.5">
+              <h2 className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-2.5">
                 {CATEGORY_LABEL[category] ?? category}
               </h2>
               <div className="flex flex-wrap gap-2">
@@ -88,8 +88,8 @@ export default function OnboardingPage() {
                       className={clsx(
                         "px-3.5 py-1.5 rounded-full text-sm border transition",
                         isSelected
-                          ? "bg-accent border-accent text-white"
-                          : "bg-panel border-border text-text hover:border-accent/60",
+                          ? "bg-primary border-primary text-white"
+                          : "bg-card border-border text-foreground hover:border-primary/60",
                       )}
                     >
                       {item.label}
@@ -101,11 +101,11 @@ export default function OnboardingPage() {
           ))}
 
         <div className="mt-10 flex items-center justify-between">
-          <p className="text-xs text-muted">{selected.size} selected</p>
+          <p className="text-xs text-muted-foreground">{selected.size} selected</p>
           <button
             onClick={handleContinue}
             disabled={submitting || selected.size === 0}
-            className="rounded-lg bg-accent text-white text-sm font-medium px-5 py-2.5 hover:opacity-90 disabled:opacity-50"
+            className="rounded-lg bg-primary text-white text-sm font-medium px-5 py-2.5 hover:opacity-90 disabled:opacity-50"
           >
             {submitting ? "Saving..." : "Continue"}
           </button>

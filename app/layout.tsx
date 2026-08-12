@@ -1,6 +1,10 @@
 import type { Metadata } from "next";
 import ConvexClientProvider from "@/components/ConvexClientProvider";
 import "./globals.css";
+import { Geist } from "next/font/google";
+import { cn } from "@/lib/utils";
+
+const geist = Geist({ subsets: ["latin"], variable: "--font-geist-sans" });
 
 export const metadata: Metadata = {
   title: "Campus Hub",
@@ -13,7 +17,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en">
+    <html lang="en" className={cn("dark font-sans", geist.variable)}>
       <body>
         <ConvexClientProvider>{children}</ConvexClientProvider>
       </body>
