@@ -27,26 +27,26 @@ export default function DiscoverPage() {
   const topics = tab === "forYou" ? forYou : tab === "new" ? fresh : popular;
 
   return (
-    <main className="min-h-screen bg-bg">
+    <main className="min-h-screen bg-background">
       <header className="border-b border-border px-6 py-4 flex items-center justify-between">
-        <h1 className="text-lg font-semibold text-text">Discover topics</h1>
+        <h1 className="text-lg font-semibold text-foreground">Discover topics</h1>
         <Link
           href="/topics/create"
-          className="rounded-lg bg-accent text-white text-sm font-medium px-4 py-2 hover:opacity-90"
+          className="rounded-lg bg-primary text-white text-sm font-medium px-4 py-2 hover:opacity-90"
         >
           + Create topic
         </Link>
       </header>
 
       <div className="max-w-4xl mx-auto px-6 py-6">
-        <div className="flex gap-1 mb-6 bg-panel border border-border rounded-lg p-1 w-fit">
+        <div className="flex gap-1 mb-6 bg-card border border-border rounded-lg p-1 w-fit">
           {TABS.map((t) => (
             <button
               key={t.key}
               onClick={() => setTab(t.key)}
               className={clsx(
                 "px-3.5 py-1.5 rounded-md text-sm font-medium transition",
-                tab === t.key ? "bg-accent text-white" : "text-muted hover:text-text"
+                tab === t.key ? "bg-primary text-white" : "text-muted-foreground hover:text-foreground"
               )}
             >
               {t.label}
@@ -54,10 +54,10 @@ export default function DiscoverPage() {
           ))}
         </div>
 
-        {topics === undefined && <p className="text-sm text-muted">Loading...</p>}
+        {topics === undefined && <p className="text-sm text-muted-foreground">Loading...</p>}
 
         {topics?.length === 0 && (
-          <div className="text-sm text-muted border border-dashed border-border rounded-xl p-8 text-center">
+          <div className="text-sm text-muted-foreground border border-dashed border-border rounded-xl p-8 text-center">
             {tab === "forYou"
               ? "No topics match your interests yet — try Popular, or create one yourself."
               : "No topics yet. Be the first to create one."}

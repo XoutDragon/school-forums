@@ -56,26 +56,26 @@ export default function LoginPage() {
   }
 
   return (
-    <main className="min-h-screen flex items-center justify-center bg-bg px-4">
+    <main className="min-h-screen flex items-center justify-center bg-background px-4">
       <div className="w-full max-w-sm">
         <div className="text-center mb-8">
-          <div className="w-12 h-12 rounded-xl bg-accent mx-auto mb-4 flex items-center justify-center text-xl font-semibold">
+          <div className="w-12 h-12 rounded-xl bg-primary mx-auto mb-4 flex items-center justify-center text-xl font-semibold">
             CH
           </div>
-          <h1 className="text-xl font-semibold text-text">
+          <h1 className="text-xl font-semibold text-foreground">
             Sign in to {config?.institutionName ?? "Campus Hub"}
           </h1>
-          <p className="text-sm text-muted mt-1">
+          <p className="text-sm text-muted-foreground mt-1">
             Use your school or alumni email to continue.
           </p>
         </div>
 
         <form
           onSubmit={handleSubmit}
-          className="bg-panel border border-border rounded-xl p-6 space-y-4"
+          className="bg-card border border-border rounded-xl p-6 space-y-4"
         >
           <div>
-            <label className="block text-xs font-medium text-muted mb-1.5">
+            <label className="block text-xs font-medium text-muted-foreground mb-1.5">
               Full name
             </label>
             <input
@@ -83,12 +83,12 @@ export default function LoginPage() {
               value={name}
               onChange={(e) => setName(e.target.value)}
               placeholder="Jordan Smith"
-              className="w-full rounded-lg bg-panel2 border border-border px-3 py-2 text-sm text-text outline-none focus:border-accent"
+              className="w-full rounded-lg bg-secondary border border-border px-3 py-2 text-sm text-foreground outline-none focus:border-primary"
             />
           </div>
 
           <div>
-            <label className="block text-xs font-medium text-muted mb-1.5">
+            <label className="block text-xs font-medium text-muted-foreground mb-1.5">
               School email
             </label>
             <input
@@ -101,7 +101,7 @@ export default function LoginPage() {
                   ? `jsmith@${config.allowedDomains[0]}`
                   : "jsmith@school.edu"
               }
-              className="w-full rounded-lg bg-panel2 border border-border px-3 py-2 text-sm text-text outline-none focus:border-accent"
+              className="w-full rounded-lg bg-secondary border border-border px-3 py-2 text-sm text-foreground outline-none focus:border-primary"
             />
           </div>
 
@@ -110,12 +110,12 @@ export default function LoginPage() {
           <button
             type="submit"
             disabled={submitting}
-            className="w-full rounded-lg bg-accent text-white text-sm font-medium py-2.5 hover:opacity-90 disabled:opacity-50"
+            className="w-full rounded-lg bg-primary text-white text-sm font-medium py-2.5 hover:opacity-90 disabled:opacity-50"
           >
             {submitting ? "Signing in..." : "Continue"}
           </button>
 
-          <p className="text-[11px] text-muted text-center pt-1">
+          <p className="text-[11px] text-muted-foreground text-center pt-1">
             Mock auth for MVP — any email on an approved domain works. Swap in
             real SSO before launch.
           </p>
@@ -124,7 +124,7 @@ export default function LoginPage() {
         <p className="text-center mt-4">
           <Link
             href="/admin/login"
-            className="text-[11px] text-muted hover:text-text"
+            className="text-[11px] text-muted-foreground hover:text-foreground"
           >
             IT staff — admin login
           </Link>

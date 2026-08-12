@@ -11,23 +11,23 @@ export default function AdminTopicsManager({ token }: { token: string }) {
 
   return (
     <div className="space-y-2">
-      {topics === undefined && <p className="text-sm text-muted">Loading topics...</p>}
-      {topics?.length === 0 && <p className="text-sm text-muted">No topics created yet.</p>}
+      {topics === undefined && <p className="text-sm text-muted-foreground">Loading topics...</p>}
+      {topics?.length === 0 && <p className="text-sm text-muted-foreground">No topics created yet.</p>}
 
       {topics?.map((topic) => (
-        <div key={topic._id} className="bg-panel border border-border rounded-lg overflow-hidden">
+        <div key={topic._id} className="bg-card border border-border rounded-lg overflow-hidden">
           <button
             onClick={() => setExpanded(expanded === topic._id ? null : topic._id)}
-            className="w-full flex items-center justify-between px-4 py-3 text-left hover:bg-panel2/40"
+            className="w-full flex items-center justify-between px-4 py-3 text-left hover:bg-secondary/40"
           >
             <div>
-              <p className="text-sm font-medium text-text">{topic.name}</p>
-              <p className="text-xs text-muted mt-0.5">
+              <p className="text-sm font-medium text-foreground">{topic.name}</p>
+              <p className="text-xs text-muted-foreground mt-0.5">
                 {topic.memberCount} members · {topic.channelCount} channels · created by{" "}
                 {topic.creatorName}
               </p>
             </div>
-            <span className="text-muted text-xs">{expanded === topic._id ? "Hide" : "Manage"}</span>
+            <span className="text-muted-foreground text-xs">{expanded === topic._id ? "Hide" : "Manage"}</span>
           </button>
 
           {expanded === topic._id && <TopicMembersPanel topicId={topic._id} token={token} />}
@@ -49,8 +49,8 @@ function TopicMembersPanel({ topicId, token }: { topicId: Id<"topics">; token: s
   }
 
   return (
-    <div className="border-t border-border px-4 py-3 bg-panel2/30 space-y-2">
-      {members === undefined && <p className="text-xs text-muted">Loading members...</p>}
+    <div className="border-t border-border px-4 py-3 bg-secondary/30 space-y-2">
+      {members === undefined && <p className="text-xs text-muted-foreground">Loading members...</p>}
 
       {members?.map(
         (m) =>
@@ -63,8 +63,8 @@ function TopicMembersPanel({ topicId, token }: { topicId: Id<"topics">; token: s
                 >
                   {m.name?.[0]?.toUpperCase()}
                 </span>
-                <span className="text-text truncate">{m.name}</span>
-                <span className="text-[11px] text-muted">{m.email}</span>
+                <span className="text-foreground truncate">{m.name}</span>
+                <span className="text-[11px] text-muted-foreground">{m.email}</span>
               </div>
 
               <div className="flex items-center gap-2 shrink-0">
@@ -78,7 +78,7 @@ function TopicMembersPanel({ topicId, token }: { topicId: Id<"topics">; token: s
                       role: e.target.value as "owner" | "moderator" | "member",
                     })
                   }
-                  className="bg-panel2 border border-border rounded px-2 py-1 text-xs text-text outline-none focus:border-accent"
+                  className="bg-secondary border border-border rounded px-2 py-1 text-xs text-foreground outline-none focus:border-primary"
                 >
                   <option value="owner">Owner</option>
                   <option value="moderator">Moderator</option>
@@ -105,13 +105,13 @@ function TopicMembersPanel({ topicId, token }: { topicId: Id<"topics">; token: s
           </button>
         ) : (
           <div className="flex items-center gap-2">
-            <span className="text-xs text-muted">
+            <span className="text-xs text-muted-foreground">
               This deletes the topic, its channels, threads, and memberships. Sure?
             </span>
             <button onClick={handleDeleteTopic} className="text-xs text-red-400 font-medium">
               Yes, delete
             </button>
-            <button onClick={() => setConfirmingDelete(false)} className="text-xs text-muted">
+            <button onClick={() => setConfirmingDelete(false)} className="text-xs text-muted-foreground">
               Cancel
             </button>
           </div>

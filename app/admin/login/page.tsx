@@ -31,17 +31,17 @@ export default function AdminLoginPage() {
   }
 
   return (
-    <main className="min-h-screen flex items-center justify-center bg-bg px-4">
+    <main className="min-h-screen flex items-center justify-center bg-background px-4">
       <div className="w-full max-w-sm">
         <div className="text-center mb-8">
-          <div className="w-12 h-12 rounded-xl bg-panel2 border border-border mx-auto mb-4 flex items-center justify-center text-xl">
+          <div className="w-12 h-12 rounded-xl bg-secondary border border-border mx-auto mb-4 flex items-center justify-center text-xl">
             🔒
           </div>
-          <h1 className="text-xl font-semibold text-text">Admin dashboard</h1>
-          <p className="text-sm text-muted mt-1">Enter the master password to continue.</p>
+          <h1 className="text-xl font-semibold text-foreground">Admin dashboard</h1>
+          <p className="text-sm text-muted-foreground mt-1">Enter the master password to continue.</p>
         </div>
 
-        <form onSubmit={handleSubmit} className="bg-panel border border-border rounded-xl p-6 space-y-4">
+        <form onSubmit={handleSubmit} className="bg-card border border-border rounded-xl p-6 space-y-4">
           <input
             required
             type="password"
@@ -49,7 +49,7 @@ export default function AdminLoginPage() {
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             placeholder="Master password"
-            className="w-full rounded-lg bg-panel2 border border-border px-3 py-2 text-sm text-text outline-none focus:border-accent"
+            className="w-full rounded-lg bg-secondary border border-border px-3 py-2 text-sm text-foreground outline-none focus:border-primary"
           />
 
           {error && <p className="text-xs text-red-400">{error}</p>}
@@ -57,7 +57,7 @@ export default function AdminLoginPage() {
           <button
             type="submit"
             disabled={submitting}
-            className="w-full rounded-lg bg-accent text-white text-sm font-medium py-2.5 hover:opacity-90 disabled:opacity-50"
+            className="w-full rounded-lg bg-primary text-white text-sm font-medium py-2.5 hover:opacity-90 disabled:opacity-50"
           >
             {submitting ? "Checking..." : "Log in"}
           </button>

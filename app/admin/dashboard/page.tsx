@@ -9,9 +9,9 @@ import AdminLogsPanel from "@/components/AdminLogsPanel";
 import AdminTopicsManager from "@/components/AdminTopicsManager";
 import AdminInterestsManager from "@/components/AdminInterestsManager";
 
-import { AppSidebar, type AdminTab } from "@/components/app-sidebar";
-import { SiteHeader } from "@/components/site-header";
-import { SectionCards } from "@/components/section-cards";
+import { AppSidebar, type AdminTab } from "./_components/app-sidebar";
+import { SiteHeader } from "./_components/site-header";
+import { SectionCards } from "./_components/section-cards";
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
 import {
   Card,
@@ -33,7 +33,10 @@ const TAB_TITLES: Record<AdminTab, string> = {
 export default function AdminDashboardPage() {
   const router = useRouter();
   const { token, loaded, logout } = useAdminSession();
-  const isValid = useQuery(api.admin.validateSession, token ? { token } : "skip");
+  const isValid = useQuery(
+    api.admin.validateSession,
+    token ? { token } : "skip",
+  );
   const stats = useQuery(api.admin.overviewStats, token ? { token } : "skip");
   const config = useQuery(api.admin.getConfig);
 
@@ -82,7 +85,9 @@ export default function AdminDashboardPage() {
                   <div className="px-4 lg:px-6">
                     <Card>
                       <CardHeader>
-                        <CardTitle className="text-sm">Instance settings</CardTitle>
+                        <CardTitle className="text-sm">
+                          Instance settings
+                        </CardTitle>
                         <CardDescription>
                           Configuration for this deployment
                         </CardDescription>
@@ -105,8 +110,8 @@ export default function AdminDashboardPage() {
                           <Badge variant="outline" className="font-normal">
                             MVP
                           </Badge>
-                          Editing these settings isn&apos;t wired up yet — update
-                          the{" "}
+                          Editing these settings isn&apos;t wired up yet —
+                          update the{" "}
                           <code className="mx-1 rounded bg-muted px-1 py-0.5">
                             institutionConfig
                           </code>

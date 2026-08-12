@@ -45,14 +45,14 @@ export default function TopicPage() {
 
   if (!topic || !channels || !userId) {
     return (
-      <main className="min-h-screen flex items-center justify-center bg-bg text-muted text-sm">
+      <main className="min-h-screen flex items-center justify-center bg-background text-muted-foreground text-sm">
         Loading...
       </main>
     );
   }
 
   return (
-    <main className="min-h-screen flex bg-bg">
+    <main className="min-h-screen flex bg-background">
       <ChannelSidebar
         topic={topic}
         channels={channels}
@@ -67,7 +67,7 @@ export default function TopicPage() {
       )}
       {selectedChannel?.type === "voice" && <VoiceChannelView channel={selectedChannel} />}
       {!selectedChannel && (
-        <div className="flex-1 flex items-center justify-center text-muted text-sm">
+        <div className="flex-1 flex items-center justify-center text-muted-foreground text-sm">
           Select a channel
         </div>
       )}

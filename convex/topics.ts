@@ -70,12 +70,13 @@ export const listMembers = query({
       .withIndex("by_topic", (q) => q.eq("topicId", topicId))
       .collect();
     const users = await Promise.all(
-      rows.map(async (r) => ({
-        ...(await ctx.db.get(r.userId)),
-        role: r.role,
-      })),
+      rows.map(async (r) => {
+        const user = await ctx.db.get(r.userId);
+        return user ? { ...user, role: r.role } : null;
+      }),
     );
-    return users;
+    // Drop memberships whose user row is gone so callers get a fully-typed user.
+    return users.filter((u) => u !== null);
   },
 });
 
