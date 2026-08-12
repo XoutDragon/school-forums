@@ -7,7 +7,11 @@ export const metadata: Metadata = {
   description: "Topics, channels, and threads for students and alumni.",
 };
 
-export default function RootLayout({ children }: { children: React.ReactNode }) {
+export default function RootLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
   return (
     <html lang="en">
       <body>
