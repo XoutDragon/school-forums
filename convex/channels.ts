@@ -2,6 +2,7 @@ import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
 import { logEvent } from "./log";
 import { requireModOrOwner } from "./permissions";
+import { deleteImages } from "./files";
 
 export const listByTopic = query({
   args: { topicId: v.id("topics") },
@@ -99,29 +100,14 @@ export const remove = mutation({
     if (!channel) return;
     await requireModOrOwner(ctx, channel.topicId, userId);
 
-    // Take the channel's threads (and their posts/votes) with it, otherwise
-    // they'd linger as orphans in the topic-wide forum feed.
-    const threads = await ctx.db
-      .query("threads")
+    // A text channel's chat history goes with it. Forum threads are topic-level
+    // and unaffected, so they survive a channel being deleted.
+    const messages = await ctx.db
+      .query("messages")
       .withIndex("by_channel", (q) => q.eq("channelId", channelId))
       .collect();
-    for (const thread of threads) {
-      const [posts, votes] = await Promise.all([
-        ctx.db
-          .query("posts")
-          .withIndex("by_thread", (q) => q.eq("threadId", thread._id))
-          .collect(),
-        ctx.db
-          .query("threadVotes")
-          .withIndex("by_thread", (q) => q.eq("threadId", thread._id))
-          .collect(),
-      ]);
-      await Promise.all([
-        ...posts.map((p) => ctx.db.delete(p._id)),
-        ...votes.map((vote) => ctx.db.delete(vote._id)),
-      ]);
-      await ctx.db.delete(thread._id);
-    }
+    await deleteImages(ctx, messages);
+    await Promise.all(messages.map((m) => ctx.db.delete(m._id)));
 
     await ctx.db.delete(channelId);
 

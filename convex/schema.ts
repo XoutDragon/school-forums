@@ -103,9 +103,28 @@ export default defineSchema({
     voiceRoomName: v.optional(v.string()),
   }).index("by_topic", ["topicId"]),
 
-  // Reddit-style threads live inside a text channel.
-  threads: defineTable({
+  // Discord-style live chat. Text channels are a running message log — no
+  // titles, no votes; the reddit-style discussion lives in `threads` instead.
+  messages: defineTable({
     channelId: v.id("channels"),
+    topicId: v.id("topics"),
+    authorId: v.id("users"),
+    body: v.string(), // may be empty when the message is just an image
+    createdAt: v.number(),
+    // Optional image attachment. Dimensions come from the uploading client and
+    // are only used to reserve the right space while the image loads.
+    imageId: v.optional(v.id("_storage")),
+    imageWidth: v.optional(v.number()),
+    imageHeight: v.optional(v.number()),
+  })
+    .index("by_channel", ["channelId"])
+    .index("by_topic", ["topicId"]),
+
+  // Reddit-style threads. These belong to the topic's forum (the entry above
+  // the channel list), not to a chat channel. `channelId` is only still here
+  // so threads created before the forum moved topic-level keep validating.
+  threads: defineTable({
+    channelId: v.optional(v.id("channels")),
     topicId: v.id("topics"),
     title: v.string(),
     authorId: v.id("users"),
@@ -137,5 +156,9 @@ export default defineSchema({
     body: v.string(),
     createdAt: v.number(),
     parentPostId: v.optional(v.id("posts")), // for nested replies
+    // Same optional image attachment as chat messages.
+    imageId: v.optional(v.id("_storage")),
+    imageWidth: v.optional(v.number()),
+    imageHeight: v.optional(v.number()),
   }).index("by_thread", ["threadId"]),
 });

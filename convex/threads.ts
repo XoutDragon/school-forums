@@ -2,6 +2,8 @@ import { v } from "convex/values";
 import { QueryCtx, mutation, query } from "./_generated/server";
 import { Doc, Id } from "./_generated/dataModel";
 import { getMembership, requireModOrOwner } from "./permissions";
+import { deleteImages, imageUrl, requireValidImage } from "./files";
+import { imageArgs } from "./messages";
 
 // `score` is optional on the table (threads predating voting don't have it),
 // so every read path funnels through this instead of touching t.score.
@@ -14,8 +16,8 @@ function hotRank(thread: Doc<"threads">, now: number) {
   return (scoreOf(thread) + thread.replyCount) / Math.pow(hours + 2, 1.5);
 }
 
-// Decorates threads with author, channel, and (if a userId is given) which way
-// the viewer voted, which is what the forum feed renders.
+// Decorates threads with their author and (if a userId is given) which way the
+// viewer voted, which is what the forum feed renders.
 async function decorate(
   ctx: QueryCtx,
   threads: Doc<"threads">[],
@@ -23,9 +25,8 @@ async function decorate(
 ) {
   return await Promise.all(
     threads.map(async (thread) => {
-      const [author, channel, vote] = await Promise.all([
+      const [author, vote, opening] = await Promise.all([
         ctx.db.get(thread.authorId),
-        ctx.db.get(thread.channelId),
         userId
           ? ctx.db
               .query("threadVotes")
@@ -34,13 +35,21 @@ async function decorate(
               )
               .unique()
           : null,
+        // The thread's body lives in its first post; the feed shows that
+        // post's image as the card thumbnail.
+        ctx.db
+          .query("posts")
+          .withIndex("by_thread", (q) => q.eq("threadId", thread._id))
+          .first(),
       ]);
       return {
         ...thread,
         score: scoreOf(thread),
         author,
-        channelName: channel?.name ?? "deleted",
         myVote: vote?.value ?? 0,
+        imageUrl: await imageUrl(ctx, opening?.imageId),
+        imageWidth: opening?.imageWidth,
+        imageHeight: opening?.imageHeight,
       };
     }),
   );
@@ -66,8 +75,9 @@ function sortThreads<T extends Doc<"threads">>(
   });
 }
 
-// The reddit-style front page: every thread in the topic, across all of its
-// text channels. Backs the "Forum" entry pinned above the channel list.
+// The reddit-style front page: every thread in the topic. Backs the "Forum"
+// entry pinned above the channel list. Chat channels have no threads — their
+// messages live in convex/messages.ts.
 export const listByTopic = query({
   args: {
     topicId: v.id("topics"),
@@ -85,23 +95,6 @@ export const listByTopic = query({
   },
 });
 
-export const listByChannel = query({
-  args: {
-    channelId: v.id("channels"),
-    userId: v.optional(v.id("users")),
-    sort: v.optional(sortOrder),
-  },
-  handler: async (ctx, { channelId, userId, sort }) => {
-    const threads = await ctx.db
-      .query("threads")
-      .withIndex("by_channel", (q) => q.eq("channelId", channelId))
-      .collect();
-
-    const decorated = await decorate(ctx, threads, userId);
-    return sortThreads(decorated, sort ?? "new", Date.now());
-  },
-});
-
 export const get = query({
   args: { threadId: v.id("threads"), userId: v.optional(v.id("users")) },
   handler: async (ctx, { threadId, userId }) => {
@@ -114,22 +107,26 @@ export const get = query({
 
 export const create = mutation({
   args: {
-    channelId: v.id("channels"),
+    topicId: v.id("topics"),
     title: v.string(),
     authorId: v.id("users"),
     body: v.string(),
+    ...imageArgs,
   },
-  handler: async (ctx, { channelId, title, authorId, body }) => {
-    const channel = await ctx.db.get(channelId);
-    if (!channel) throw new Error("Channel not found");
-    if (channel.type !== "text") throw new Error("Threads can only be created in text channels");
+  handler: async (
+    ctx,
+    { topicId, title, authorId, body, imageId, imageWidth, imageHeight },
+  ) => {
+    const topic = await ctx.db.get(topicId);
+    if (!topic) throw new Error("Topic not found");
 
-    const membership = await getMembership(ctx, channel.topicId, authorId);
+    const membership = await getMembership(ctx, topicId, authorId);
     if (!membership) throw new Error("Join this topic before posting in it.");
 
+    if (imageId) await requireValidImage(ctx, imageId);
+
     const threadId = await ctx.db.insert("threads", {
-      channelId,
-      topicId: channel.topicId,
+      topicId,
       title: title.trim(),
       authorId,
       createdAt: Date.now(),
@@ -138,12 +135,15 @@ export const create = mutation({
       score: 1,
     });
 
-    // The thread's own body is stored as its first post.
+    // The thread's own body (and image) is stored as its first post.
     await ctx.db.insert("posts", {
       threadId,
       authorId,
       body,
       createdAt: Date.now(),
+      imageId,
+      imageWidth,
+      imageHeight,
     });
 
     // Reddit-style: your own post starts out self-upvoted.
@@ -225,6 +225,7 @@ export const remove = mutation({
         .withIndex("by_thread", (q) => q.eq("threadId", threadId))
         .collect(),
     ]);
+    await deleteImages(ctx, posts);
     await Promise.all([
       ...posts.map((p) => ctx.db.delete(p._id)),
       ...votes.map((vote) => ctx.db.delete(vote._id)),
@@ -241,7 +242,13 @@ export const listPosts = query({
       .withIndex("by_thread", (q) => q.eq("threadId", threadId))
       .collect();
     const withAuthors = await Promise.all(
-      posts.map(async (p) => ({ ...p, author: await ctx.db.get(p.authorId) }))
+      posts.map(async (p) => {
+        const [author, url] = await Promise.all([
+          ctx.db.get(p.authorId),
+          imageUrl(ctx, p.imageId),
+        ]);
+        return { ...p, author, imageUrl: url };
+      }),
     );
     return withAuthors.sort((a, b) => a.createdAt - b.createdAt);
   },
@@ -253,15 +260,33 @@ export const reply = mutation({
     authorId: v.id("users"),
     body: v.string(),
     parentPostId: v.optional(v.id("posts")),
+    ...imageArgs,
   },
-  handler: async (ctx, { threadId, authorId, body, parentPostId }) => {
+  handler: async (
+    ctx,
+    { threadId, authorId, body, parentPostId, imageId, imageWidth, imageHeight },
+  ) => {
     const thread = await ctx.db.get(threadId);
     if (!thread) throw new Error("Thread not found");
+
+    const trimmed = body.trim();
+    if (!trimmed && !imageId) return;
 
     const membership = await getMembership(ctx, thread.topicId, authorId);
     if (!membership) throw new Error("Join this topic before replying in it.");
 
-    await ctx.db.insert("posts", { threadId, authorId, body, createdAt: Date.now(), parentPostId });
+    if (imageId) await requireValidImage(ctx, imageId);
+
+    await ctx.db.insert("posts", {
+      threadId,
+      authorId,
+      body: trimmed,
+      createdAt: Date.now(),
+      parentPostId,
+      imageId,
+      imageWidth,
+      imageHeight,
+    });
     await ctx.db.patch(threadId, { replyCount: thread.replyCount + 1 });
   },
 });

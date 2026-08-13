@@ -235,7 +235,7 @@ function ChannelsTab({
               aria-label={`Delete ${channel.name}`}
               onClick={() => {
                 const ok = window.confirm(
-                  `Delete "${channel.name}"? Every thread and reply in it is deleted too.`,
+                  `Delete "${channel.name}"? Its chat history is deleted too.`,
                 );
                 if (ok) run(() => removeChannel({ channelId: channel._id, userId }));
               }}

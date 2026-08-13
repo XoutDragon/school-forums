@@ -6,18 +6,11 @@ import { FunctionReturnType } from "convex/server";
 import { api } from "@/convex/_generated/api";
 import { Doc, Id } from "@/convex/_generated/dataModel";
 import clsx from "clsx";
-import {
-  Clock,
-  Flame,
-  Hash,
-  MessageSquare,
-  Pin,
-  PinOff,
-  Trash2,
-  TrendingUp,
-} from "lucide-react";
+import { Clock, Flame, MessageSquare, Pin, PinOff, Trash2, TrendingUp } from "lucide-react";
 import ActionMenu, { MenuItem } from "@/components/ActionMenu";
 import { UserAvatar } from "@/components/UserBadge";
+import { AttachImageButton, PendingImagePreview } from "@/components/ImageAttachment";
+import { useImageUpload } from "@/lib/useImageUpload";
 import { compactNumber, timeAgo } from "@/lib/format";
 
 export type SortOrder = "hot" | "new" | "top";
@@ -28,80 +21,46 @@ const SORTS: { key: SortOrder; label: string; icon: typeof Flame }[] = [
   { key: "top", label: "Top", icon: TrendingUp },
 ];
 
-// Reddit-style feed of threads. `channel === null` is the topic-wide "Forum"
-// front page (the entry pinned above the channel list); passing a channel
-// scopes it to that channel and locks the composer to it.
-export default function ThreadFeed({
+// The topic's reddit-style front page, reached from the "Forum" entry pinned
+// above the channel list. Threads are topic-level — the text channels beside
+// them are plain live chat (see ChatChannelView).
+export default function ForumView({
   topic,
-  channel,
-  textChannels,
   userId,
   canModerate,
   onOpenThread,
 }: {
   topic: Doc<"topics">;
-  channel: Doc<"channels"> | null;
-  textChannels: Doc<"channels">[];
   userId: Id<"users">;
   canModerate: boolean;
   onOpenThread: (threadId: Id<"threads">) => void;
 }) {
-  const isForum = channel === null;
-  const [sort, setSort] = useState<SortOrder>(isForum ? "hot" : "new");
-
-  // Only one of these runs: the other is skipped depending on the scope.
-  const topicThreads = useQuery(
-    api.threads.listByTopic,
-    isForum ? { topicId: topic._id, userId, sort } : "skip",
-  );
-  const channelThreads = useQuery(
-    api.threads.listByChannel,
-    channel ? { channelId: channel._id, userId, sort } : "skip",
-  );
-  const threads = isForum ? topicThreads : channelThreads;
+  const [sort, setSort] = useState<SortOrder>("hot");
+  const threads = useQuery(api.threads.listByTopic, { topicId: topic._id, userId, sort });
 
   return (
     <div className="flex-1 flex flex-col min-w-0">
       <header className="border-b border-border px-6 py-3.5">
         <div className="flex items-center justify-between gap-3">
           <div className="min-w-0">
-            <h2 className="text-sm font-semibold text-foreground flex items-center gap-1.5">
-              {isForum ? (
-                <>Forum</>
-              ) : (
-                <>
-                  <Hash className="w-3.5 h-3.5 opacity-70" />
-                  {channel.name}
-                </>
-              )}
-            </h2>
+            <h2 className="text-sm font-semibold text-foreground">Forum</h2>
             <p className="text-[11px] text-muted-foreground truncate mt-0.5">
-              {isForum
-                ? topic.description || "Every thread across all channels"
-                : `Threads in #${channel.name}`}
+              {topic.description || "Posts and discussion for this topic"}
             </p>
           </div>
           <SortTabs sort={sort} onChange={setSort} />
         </div>
       </header>
 
-      <Composer
-        topicId={topic._id}
-        userId={userId}
-        textChannels={textChannels}
-        fixedChannel={channel}
-        onPosted={onOpenThread}
-      />
+      <Composer topicId={topic._id} userId={userId} onPosted={onOpenThread} />
 
       <div className="flex-1 overflow-y-auto px-6 py-4 space-y-2">
         {threads === undefined && (
-          <p className="text-sm text-muted-foreground">Loading threads...</p>
+          <p className="text-sm text-muted-foreground">Loading posts...</p>
         )}
         {threads?.length === 0 && (
           <p className="text-sm text-muted-foreground">
-            {isForum
-              ? "No threads in this topic yet. Start the conversation."
-              : `Nothing in #${channel.name} yet. Start the conversation.`}
+            No posts yet. Start the conversation.
           </p>
         )}
         {threads?.map((thread) => (
@@ -110,7 +69,6 @@ export default function ThreadFeed({
             thread={thread}
             userId={userId}
             canModerate={canModerate}
-            showChannel={isForum}
             onOpen={() => onOpenThread(thread._id)}
           />
         ))}
@@ -153,13 +111,11 @@ function ThreadCard({
   thread,
   userId,
   canModerate,
-  showChannel,
   onOpen,
 }: {
   thread: FeedThread;
   userId: Id<"users">;
   canModerate: boolean;
-  showChannel: boolean;
   onOpen: () => void;
 }) {
   const removeThread = useMutation(api.threads.remove);
@@ -186,7 +142,7 @@ function ThreadCard({
             </span>
           </button>
           {canDelete && (
-            <ActionMenu trigger={<span className="px-1 text-xs leading-none">···</span>} label="Thread actions">
+            <ActionMenu trigger={<span className="px-1 text-xs leading-none">···</span>} label="Post actions">
               {(close) => (
                 <>
                   {canModerate && (
@@ -197,7 +153,7 @@ function ThreadCard({
                         close();
                       }}
                     >
-                      {thread.pinned ? "Unpin thread" : "Pin thread"}
+                      {thread.pinned ? "Unpin post" : "Pin post"}
                     </MenuItem>
                   )}
                   <MenuItem
@@ -208,7 +164,7 @@ function ThreadCard({
                       handleDelete();
                     }}
                   >
-                    Delete thread
+                    Delete post
                   </MenuItem>
                 </>
               )}
@@ -216,16 +172,28 @@ function ThreadCard({
           )}
         </div>
 
+        {thread.imageUrl && (
+          <button onClick={onOpen} className="block mt-2">
+            {/* Feed thumbnail of the post's image. */}
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={thread.imageUrl}
+              alt=""
+              className="max-h-40 rounded-lg border border-border object-cover"
+              loading="lazy"
+            />
+          </button>
+        )}
+
         <div className="flex items-center gap-2 mt-1.5 text-[11px] text-muted-foreground flex-wrap">
-          {showChannel && (
-            <span className="inline-flex items-center gap-0.5 rounded bg-secondary px-1.5 py-0.5 text-foreground/80">
-              <Hash className="w-2.5 h-2.5" />
-              {thread.channelName}
-            </span>
-          )}
           {thread.author && (
             <span className="inline-flex items-center gap-1">
-              <UserAvatar name={thread.author.name} color={thread.author.avatarColor} size="sm" className="w-4 h-4 text-[8px]" />
+              <UserAvatar
+                name={thread.author.name}
+                color={thread.author.avatarColor}
+                size="sm"
+                className="w-4 h-4 text-[8px]"
+              />
               {thread.author.name}
             </span>
           )}
@@ -290,50 +258,46 @@ export function VoteColumn({
 function Composer({
   topicId,
   userId,
-  textChannels,
-  fixedChannel,
   onPosted,
 }: {
   topicId: Id<"topics">;
   userId: Id<"users">;
-  textChannels: Doc<"channels">[];
-  fixedChannel: Doc<"channels"> | null;
   onPosted: (threadId: Id<"threads">) => void;
 }) {
   const createThread = useMutation(api.threads.create);
   const [open, setOpen] = useState(false);
   const [title, setTitle] = useState("");
   const [body, setBody] = useState("");
-  const [channelId, setChannelId] = useState<Id<"channels"> | "">("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const image = useImageUpload();
 
-  // In forum mode the author picks a channel; default to the first text one.
-  const target = fixedChannel?._id ?? (channelId || textChannels[0]?._id);
+  // A post needs a title, and then either text or an image.
+  const canPost = title.trim().length > 0 && (body.trim().length > 0 || image.pending !== null);
 
   async function handlePost() {
-    if (!title.trim() || !body.trim() || !target) return;
+    if (!canPost) return;
     setSubmitting(true);
     setError(null);
     try {
-      const threadId = await createThread({ channelId: target, title, authorId: userId, body });
+      const uploaded = await image.upload(userId);
+      const threadId = await createThread({
+        topicId,
+        title,
+        authorId: userId,
+        body,
+        ...(uploaded ?? {}),
+      });
       setTitle("");
       setBody("");
+      image.clear();
       setOpen(false);
       onPosted(threadId);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Couldn't post that thread.");
+      setError(e instanceof Error ? e.message : "Couldn't post that.");
     } finally {
       setSubmitting(false);
     }
-  }
-
-  if (textChannels.length === 0) {
-    return (
-      <div className="border-b border-border px-6 py-3 text-xs text-muted-foreground">
-        This topic has no text channels yet, so there's nowhere to post.
-      </div>
-    );
   }
 
   if (!open) {
@@ -343,7 +307,7 @@ function Composer({
           onClick={() => setOpen(true)}
           className="w-full text-left rounded-lg bg-secondary/60 border border-border px-3 py-2 text-xs text-muted-foreground hover:border-primary/60"
         >
-          Create a post{fixedChannel ? ` in #${fixedChannel.name}` : ""}...
+          Create a post...
         </button>
       </div>
     );
@@ -351,48 +315,48 @@ function Composer({
 
   return (
     <div className="border-b border-border px-6 py-4 bg-secondary/40 space-y-2">
-      {!fixedChannel && (
-        <select
-          value={target ?? ""}
-          onChange={(e) => setChannelId(e.target.value as Id<"channels">)}
-          className="rounded-lg bg-secondary border border-border px-2 py-1.5 text-xs text-foreground outline-none focus:border-primary"
-        >
-          {textChannels.map((c) => (
-            <option key={c._id} value={c._id}>
-              #{c.name}
-            </option>
-          ))}
-        </select>
-      )}
       <input
         value={title}
         onChange={(e) => setTitle(e.target.value)}
-        placeholder="Thread title"
+        placeholder="Post title"
         className="w-full rounded-lg bg-secondary border border-border px-3 py-2 text-sm text-foreground outline-none focus:border-primary"
       />
       <textarea
         value={body}
         onChange={(e) => setBody(e.target.value)}
+        onPaste={(e) => {
+          if (image.attachFromTransfer(e.clipboardData)) e.preventDefault();
+        }}
         placeholder="What's on your mind?"
         rows={4}
         className="w-full rounded-lg bg-secondary border border-border px-3 py-2 text-sm text-foreground outline-none focus:border-primary resize-none"
       />
-      {error && (
+      {image.pending && (
+        <PendingImagePreview
+          pending={image.pending}
+          uploading={image.uploading}
+          onRemove={image.clear}
+        />
+      )}
+      {(error || image.error) && (
         <p className="text-[11px] text-red-400" role="alert">
-          {error}
+          {error ?? image.error}
         </p>
       )}
-      <div className="flex justify-end gap-2">
-        <button onClick={() => setOpen(false)} className="text-xs text-muted-foreground px-3 py-1.5">
-          Cancel
-        </button>
-        <button
-          onClick={handlePost}
-          disabled={submitting || !title.trim() || !body.trim()}
-          className="rounded-lg bg-primary text-white text-xs font-medium px-3 py-1.5 hover:opacity-90 disabled:opacity-50"
-        >
-          {submitting ? "Posting..." : "Post thread"}
-        </button>
+      <div className="flex items-center justify-between gap-2">
+        <AttachImageButton onFile={image.attach} disabled={image.uploading} />
+        <div className="flex items-center gap-2">
+          <button onClick={() => setOpen(false)} className="text-xs text-muted-foreground px-3 py-1.5">
+            Cancel
+          </button>
+          <button
+            onClick={handlePost}
+            disabled={submitting || !canPost}
+            className="rounded-lg bg-primary text-white text-xs font-medium px-3 py-1.5 hover:opacity-90 disabled:opacity-50"
+          >
+            {submitting ? "Posting..." : "Post"}
+          </button>
+        </div>
       </div>
     </div>
   );

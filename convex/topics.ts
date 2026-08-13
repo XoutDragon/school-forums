@@ -3,6 +3,7 @@ import { MutationCtx, mutation, query } from "./_generated/server";
 import { Id } from "./_generated/dataModel";
 import { logEvent } from "./log";
 import { requireAdminSession } from "./admin";
+import { deleteImages } from "./files";
 import {
   getMembership as findMembership,
   requireModOrOwner,
@@ -482,12 +483,12 @@ export const adminDeleteTopic = mutation({
   },
 });
 
-// Deletes a topic and everything hanging off it: memberships, channels,
-// threads, the threads' posts and votes. Shared by the owner-initiated
-// `remove` and the admin-initiated `adminDeleteTopic` so the two can't
-// drift apart and leave orphaned rows behind.
+// Deletes a topic and everything hanging off it: memberships, channels and
+// their chat messages, forum threads and those threads' posts and votes.
+// Shared by the owner-initiated `remove` and the admin-initiated
+// `adminDeleteTopic` so the two can't drift apart and leave orphaned rows.
 async function cascadeDeleteTopic(ctx: MutationCtx, topicId: Id<"topics">) {
-  const [members, channels] = await Promise.all([
+  const [members, channels, threads, messages] = await Promise.all([
     ctx.db
       .query("topicMembers")
       .withIndex("by_topic", (q) => q.eq("topicId", topicId))
@@ -496,33 +497,41 @@ async function cascadeDeleteTopic(ctx: MutationCtx, topicId: Id<"topics">) {
       .query("channels")
       .withIndex("by_topic", (q) => q.eq("topicId", topicId))
       .collect(),
+    ctx.db
+      .query("threads")
+      .withIndex("by_topic", (q) => q.eq("topicId", topicId))
+      .collect(),
+    ctx.db
+      .query("messages")
+      .withIndex("by_topic", (q) => q.eq("topicId", topicId))
+      .collect(),
   ]);
 
-  for (const channel of channels) {
-    const threads = await ctx.db
-      .query("threads")
-      .withIndex("by_channel", (q) => q.eq("channelId", channel._id))
-      .collect();
-    for (const thread of threads) {
-      const [posts, votes] = await Promise.all([
-        ctx.db
-          .query("posts")
-          .withIndex("by_thread", (q) => q.eq("threadId", thread._id))
-          .collect(),
-        ctx.db
-          .query("threadVotes")
-          .withIndex("by_thread", (q) => q.eq("threadId", thread._id))
-          .collect(),
-      ]);
-      await Promise.all([
-        ...posts.map((p) => ctx.db.delete(p._id)),
-        ...votes.map((vote) => ctx.db.delete(vote._id)),
-      ]);
-      await ctx.db.delete(thread._id);
-    }
-    await ctx.db.delete(channel._id);
+  for (const thread of threads) {
+    const [posts, votes] = await Promise.all([
+      ctx.db
+        .query("posts")
+        .withIndex("by_thread", (q) => q.eq("threadId", thread._id))
+        .collect(),
+      ctx.db
+        .query("threadVotes")
+        .withIndex("by_thread", (q) => q.eq("threadId", thread._id))
+        .collect(),
+    ]);
+    // Stored images live outside the database, so they need deleting too.
+    await deleteImages(ctx, posts);
+    await Promise.all([
+      ...posts.map((p) => ctx.db.delete(p._id)),
+      ...votes.map((vote) => ctx.db.delete(vote._id)),
+    ]);
+    await ctx.db.delete(thread._id);
   }
 
-  await Promise.all(members.map((m) => ctx.db.delete(m._id)));
+  await deleteImages(ctx, messages);
+  await Promise.all([
+    ...messages.map((m) => ctx.db.delete(m._id)),
+    ...channels.map((c) => ctx.db.delete(c._id)),
+    ...members.map((m) => ctx.db.delete(m._id)),
+  ]);
   await ctx.db.delete(topicId);
 }

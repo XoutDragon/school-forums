@@ -7,8 +7,9 @@ import { api } from "@/convex/_generated/api";
 import { Id } from "@/convex/_generated/dataModel";
 import { useSession } from "@/lib/session";
 import ChannelSidebar, { Selection } from "@/components/ChannelSidebar";
-import ThreadFeed from "@/components/ThreadFeed";
+import ForumView from "@/components/ForumView";
 import ThreadView from "@/components/ThreadView";
+import ChatChannelView from "@/components/ChatChannelView";
 import VoiceChannelView from "@/components/VoiceChannelView";
 import MemberList from "@/components/MemberList";
 import TopicSettingsModal from "@/components/TopicSettingsModal";
@@ -68,8 +69,6 @@ export default function TopicPage() {
     );
   }
 
-  const textChannels = channels.filter((c) => c.type === "text");
-
   async function handleLeave() {
     if (!userId) return;
     if (!window.confirm(`Leave "${topic!.name}"?`)) return;
@@ -93,6 +92,7 @@ export default function TopicPage() {
         onLeave={handleLeave}
       />
 
+      {/* Forum = reddit-style posts; text channels = live chat; voice = placeholder. */}
       {openThreadId ? (
         <ThreadView
           threadId={openThreadId}
@@ -101,13 +101,13 @@ export default function TopicPage() {
           onBack={() => setOpenThreadId(null)}
           onDeleted={() => setOpenThreadId(null)}
         />
+      ) : selectedChannel?.type === "text" ? (
+        <ChatChannelView channel={selectedChannel} userId={userId} canModerate={canManage} />
       ) : selectedChannel?.type === "voice" ? (
         <VoiceChannelView channel={selectedChannel} />
       ) : (
-        <ThreadFeed
+        <ForumView
           topic={topic}
-          channel={selectedChannel ?? null}
-          textChannels={textChannels}
           userId={userId}
           canModerate={canManage}
           onOpenThread={setOpenThreadId}

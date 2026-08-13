@@ -84,7 +84,7 @@ export default function ChannelSidebar({
 
   async function handleDelete(channel: Doc<"channels">) {
     const ok = window.confirm(
-      `Delete "${channel.name}"? Every thread and reply in it is deleted too. This can't be undone.`,
+      `Delete "${channel.name}"? Its chat history is deleted too. This can't be undone.`,
     );
     if (!ok) return;
     try {
@@ -176,11 +176,11 @@ export default function ChannelSidebar({
           <MessageSquareText className="w-4 h-4 shrink-0 opacity-80" />
           <span className="truncate font-medium">Forum</span>
           <span className="ml-auto text-[10px] uppercase tracking-wide text-muted-foreground">
-            All posts
+            Posts
           </span>
         </button>
         <p className="px-2 pb-2 text-[10px] leading-snug text-muted-foreground/80">
-          Every thread in this topic, ranked like a subreddit.
+          Threaded posts and voting, like a subreddit. Channels below are live chat.
         </p>
 
         <SectionLabel
