@@ -111,6 +111,10 @@ export default defineSchema({
     authorId: v.id("users"),
     body: v.string(), // may be empty when the message is just an image
     createdAt: v.number(),
+    // Set on edit; presence alone drives the "(edited)" label.
+    editedAt: v.optional(v.number()),
+    // Optional reply-to. Scoped to the same channel (enforced in messages.send).
+    replyToId: v.optional(v.id("messages")),
     // Optional image attachment. Dimensions come from the uploading client and
     // are only used to reserve the right space while the image loads.
     imageId: v.optional(v.id("_storage")),
