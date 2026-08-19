@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="en" class="dark">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="dark light" />
+    <meta
+      name="description"
+      content="CampusConnect — the Lakeshore University community. Clubs, courses, study groups and the people in them."
+    />
+    <title>CampusConnect · Lakeshore University</title>
+    <script>
+      // Applied before first paint so a light-mode user never sees a dark flash.
+      try {
+        const stored = localStorage.getItem('cc-theme');
+        if (stored === 'light') document.documentElement.classList.add('light');
+      } catch {}
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

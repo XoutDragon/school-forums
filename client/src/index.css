@@ -1,0 +1,144 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ─────────────────────────────────────────────────────────── Token table ──
+   The base is a blue-black rather than a neutral grey, so indigo reads as native
+   to the surface instead of dropped onto it. Every panel step keeps that violet
+   undertone; nothing here is a Tailwind slate.
+   ─────────────────────────────────────────────────────────────────────────── */
+
+@layer base {
+  :root {
+    --ink: 11 13 20; /* #0B0D14 — page */
+    --panel: 18 21 31; /* #12151F — rails, sidebars */
+    --raised: 26 30 43; /* #1A1E2B — cards, inputs */
+    --edge: 38 43 59; /* #262B3B — hairlines */
+    --chalk: 232 234 242; /* #E8EAF2 — primary text */
+    --dim: 139 147 169; /* #8B93A9 — secondary text */
+    --faint: 92 99 120; /* #5C6378 — tertiary, timestamps */
+    --accent: 99 102 241; /* indigo */
+    --accent-lift: 129 140 248;
+    --clubs: 245 158 11;
+    --courses: 16 185 129;
+    --events: 244 63 94;
+
+    color-scheme: dark;
+  }
+
+  :root.light {
+    --ink: 247 248 251;
+    --panel: 255 255 255;
+    --raised: 255 255 255;
+    --edge: 224 227 236;
+    --chalk: 22 25 36;
+    --dim: 95 103 124;
+    --faint: 138 145 163;
+    --accent: 79 70 229;
+    --accent-lift: 67 56 202;
+    --clubs: 180 83 9;
+    --courses: 4 120 87;
+    --events: 190 24 93;
+
+    color-scheme: light;
+  }
+
+  html {
+    -webkit-text-size-adjust: 100%;
+  }
+
+  body {
+    @apply bg-ink text-chalk font-sans antialiased;
+    font-feature-settings: 'cv05', 'ss01';
+  }
+
+  /* Focus is visible everywhere, and it uses the accent so it reads as intentional. */
+  :focus-visible {
+    @apply outline-none ring-2 ring-accent ring-offset-2 ring-offset-ink rounded-sm;
+  }
+
+  ::selection {
+    @apply bg-accent/30;
+  }
+
+  /* Scrollbars match the surface instead of punching a light hole in a dark panel. */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: rgb(var(--edge)) transparent;
+  }
+  *::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  *::-webkit-scrollbar-thumb {
+    background-color: rgb(var(--edge));
+    border-radius: 999px;
+    border: 3px solid transparent;
+    background-clip: content-box;
+  }
+  *::-webkit-scrollbar-thumb:hover {
+    background-color: rgb(var(--faint) / 0.6);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
+}
+
+/* ──────────────────────────────────────────────────────── Component layer ──
+   Only patterns used in three or more places earn a class here. Everything else
+   stays inline so the markup keeps telling the truth about itself.
+   ─────────────────────────────────────────────────────────────────────────── */
+
+@layer components {
+  /* The signature typographic device: course codes, terms and counts are set in the
+     utility face, because on a campus those genuinely are codes. */
+  .code-chip {
+    @apply inline-flex items-center rounded-md border border-edge bg-raised px-1.5 py-0.5
+           font-mono text-code text-dim;
+  }
+
+  .eyebrow {
+    @apply font-mono text-eyebrow uppercase text-faint;
+  }
+
+  .card {
+    @apply rounded-xl border border-edge bg-panel;
+  }
+
+  .hairline {
+    @apply border-edge;
+  }
+
+  /* The week strip's day column. Today gets a filled accent spine down its left edge —
+     the one place on the home page that uses the accent as a block rather than a tint. */
+  .day-col {
+    @apply relative flex min-h-[7.5rem] flex-col gap-1.5 rounded-lg border border-edge/70
+           bg-panel/60 p-2.5 transition-colors;
+  }
+  .day-col-today {
+    @apply border-accent/40 bg-accent/[0.06];
+  }
+  .day-col-today::before {
+    content: '';
+    @apply absolute left-0 top-2.5 bottom-2.5 w-[3px] rounded-full bg-accent;
+  }
+  .day-col-past {
+    @apply opacity-45;
+  }
+}
+
+@layer utilities {
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+  .no-scrollbar {
+    scrollbar-width: none;
+  }
+}

@@ -1,0 +1,5 @@
+{
+  "_comment": "blocked = refused server-side with a 400. flagged = client shows a 'rephrase?' nudge and the post still sends. Slurs belong in `blocked`; this local seed list keeps mild heat in `flagged` so the nudge is demonstrable without shipping a slur list in the repo.",
+  "blocked": [],
+  "flagged": ["idiot", "stupid", "shut up", "moron", "trash", "pathetic"]
+}
