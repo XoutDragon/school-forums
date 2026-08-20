@@ -4,7 +4,7 @@ import { cn, relativeTime, timeOfDay } from '@/lib/utils';
 import { api } from '@/lib/convexApi';
 import { useM, useQ } from '@/lib/convexHooks';
 import { useMe } from '@/hooks/useMe';
-import { Avatar, EmptyState, Skeleton } from '@/components/ui';
+import { Avatar, EmptyState, Input, Skeleton } from '@/components/ui';
 import { Markdown } from '@/features/chat/Markdown';
 import { IconSend } from '@/components/Icons';
 
@@ -32,11 +32,21 @@ interface DirectMessage {
   deletedAt: number | null;
 }
 
+interface SearchResult {
+  kind: 'person';
+  id: string;
+  title: string;
+  subtitle: string;
+  badge: string | null;
+}
+
 export function DmPage() {
   const { conversationId } = useParams();
   const navigate = useNavigate();
   const me = useMe();
   const [draft, setDraft] = useState('');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [isSearching, setIsSearching] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   const conversations = useQ<Conversation[]>(api.dms.list);
@@ -44,9 +54,14 @@ export function DmPage() {
     api.dms.messages,
     conversationId ? { conversationId } : 'skip',
   );
+  const searchResults = useQ<Record<string, SearchResult[]>>(
+    api.search.search,
+    searchQuery.trim() ? { q: searchQuery, scope: 'people', limit: 10 } : 'skip',
+  );
 
   const sendMessage = useM(api.dms.send);
   const markRead = useM(api.dms.markRead);
+  const openDm = useM(api.dms.open);
 
   const active = conversations?.find((c) => c.id === conversationId);
 
@@ -66,12 +81,19 @@ export function DmPage() {
     await sendMessage({ conversationId, content });
   };
 
+  const startDm = async (userId: string) => {
+    const convId = await openDm({ userIds: [userId] });
+    navigate(`/dms/${convId}`);
+    setSearchQuery('');
+    setIsSearching(false);
+  };
+
   return (
     <div className="flex h-full">
       <aside
         className={cn(
           'w-full shrink-0 flex-col border-r border-edge bg-panel md:flex md:w-72',
-          conversationId ? 'hidden md:flex' : 'flex',
+          conversationId && !isSearching ? 'hidden md:flex' : 'flex',
         )}
       >
         <header className="border-b border-edge px-4 py-3.5">
@@ -80,49 +102,105 @@ export function DmPage() {
           </h1>
         </header>
 
+        <div className="border-b border-edge px-3 py-2">
+          <Input
+            placeholder="Search people..."
+            value={searchQuery}
+            onChange={(e) => {
+              setSearchQuery(e.target.value);
+              setIsSearching(!!e.target.value.trim());
+            }}
+            className="text-sm"
+          />
+        </div>
+
         <div className="flex-1 overflow-y-auto p-2">
-          {conversations === undefined ? (
-            Array.from({ length: 5 }, (_, i) => <Skeleton key={i} className="mb-1.5 h-14" />)
-          ) : !conversations.length ? (
-            <p className="px-3 py-10 text-center text-sm text-dim">
-              No conversations yet. Waving at someone or connecting with a study buddy starts one.
-            </p>
+          {isSearching ? (
+            <>
+              {searchResults === undefined ? (
+                Array.from({ length: 3 }, (_, i) => <Skeleton key={i} className="mb-1.5 h-14" />)
+              ) : !searchResults.people?.length ? (
+                <p className="px-3 py-10 text-center text-sm text-dim">
+                  No students found. Try a different name or username.
+                </p>
+              ) : (
+                <div className="space-y-1">
+                  {searchResults.people.map((person) => (
+                    <button
+                      key={person.id}
+                      onClick={() => void startDm(person.id)}
+                      className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left transition hover:bg-raised/60"
+                    >
+                      <Avatar
+                        name={person.title}
+                        src={null}
+                        seed={person.id}
+                        size={34}
+                      />
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate text-sm font-medium text-chalk">
+                          {person.title}
+                        </span>
+                        <span className="flex items-center gap-1.5">
+                          <span className="truncate text-xs text-dim">{person.subtitle}</span>
+                          {person.badge && (
+                            <span className="shrink-0 rounded-full bg-accent/20 px-1.5 font-mono text-[0.5625rem] font-semibold text-accent-lift">
+                              {person.badge}
+                            </span>
+                          )}
+                        </span>
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </>
           ) : (
-            conversations.map((c) => (
-              <button
-                key={c.id}
-                onClick={() => navigate(`/dms/${c.id}`)}
-                className={cn(
-                  'flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left transition',
-                  c.id === conversationId ? 'bg-raised' : 'hover:bg-raised/60',
-                )}
-              >
-                <Avatar
-                  name={c.members[0]?.displayName ?? c.title}
-                  src={c.members[0]?.avatarUrl}
-                  seed={c.members[0]?.id ?? c.id}
-                  size={34}
-                />
-                <span className="min-w-0 flex-1">
-                  <span className="flex items-baseline justify-between gap-2">
-                    <span className="truncate text-sm font-medium text-chalk">{c.title}</span>
-                    {c.lastMessage && (
-                      <span className="shrink-0 font-mono text-[0.5625rem] text-faint">
-                        {relativeTime(c.lastMessage.createdAt)}
+            <>
+              {conversations === undefined ? (
+                Array.from({ length: 5 }, (_, i) => <Skeleton key={i} className="mb-1.5 h-14" />)
+              ) : !conversations.length ? (
+                <p className="px-3 py-10 text-center text-sm text-dim">
+                  No conversations yet. Waving at someone or connecting with a study buddy starts one.
+                </p>
+              ) : (
+                conversations.map((c) => (
+                  <button
+                    key={c.id}
+                    onClick={() => navigate(`/dms/${c.id}`)}
+                    className={cn(
+                      'flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left transition',
+                      c.id === conversationId ? 'bg-raised' : 'hover:bg-raised/60',
+                    )}
+                  >
+                    <Avatar
+                      name={c.members[0]?.displayName ?? c.title}
+                      src={c.members[0]?.avatarUrl}
+                      seed={c.members[0]?.id ?? c.id}
+                      size={34}
+                    />
+                    <span className="min-w-0 flex-1">
+                      <span className="flex items-baseline justify-between gap-2">
+                        <span className="truncate text-sm font-medium text-chalk">{c.title}</span>
+                        {c.lastMessage && (
+                          <span className="shrink-0 font-mono text-[0.5625rem] text-faint">
+                            {relativeTime(c.lastMessage.createdAt)}
+                          </span>
+                        )}
+                      </span>
+                      <span className="block truncate text-xs text-dim">
+                        {c.lastMessage?.excerpt ?? 'No messages yet'}
+                      </span>
+                    </span>
+                    {c.unreadCount > 0 && (
+                      <span className="shrink-0 rounded-full bg-accent px-1.5 font-mono text-[0.5625rem] font-bold text-white">
+                        {c.unreadCount}
                       </span>
                     )}
-                  </span>
-                  <span className="block truncate text-xs text-dim">
-                    {c.lastMessage?.excerpt ?? 'No messages yet'}
-                  </span>
-                </span>
-                {c.unreadCount > 0 && (
-                  <span className="shrink-0 rounded-full bg-accent px-1.5 font-mono text-[0.5625rem] font-bold text-white">
-                    {c.unreadCount}
-                  </span>
-                )}
-              </button>
-            ))
+                  </button>
+                ))
+              )}
+            </>
           )}
         </div>
       </aside>
