@@ -31,6 +31,7 @@ export function MajorPage() {
   const { id } = useParams();
 
   const major = useQ<MajorDetail>(api.catalog.major, id ? { majorId: id } : 'skip');
+  const sendWave = useM(api.users.wave);
   const isLoading = major === undefined;
 
   if (isLoading || !major) return <Skeleton className="h-96 w-full" />;
@@ -40,8 +41,6 @@ export function MajorPage() {
     .filter((y) => y.year)
     .sort((a, b) => YEAR_ORDER.indexOf(a.year!) - YEAR_ORDER.indexOf(b.year!));
   const peak = Math.max(1, ...ordered.map((y) => y.count));
-
-  const sendWave = useM(api.users.wave);
   const wave = async (userId: string) => {
     await sendWave({ toId: userId, context: major.name });
   };

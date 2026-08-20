@@ -1,17 +1,27 @@
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { loginSchema, registerSchema } from '@campusconnect/shared';
 import { useAuth } from '@/stores/auth';
+import { useMe } from '@/hooks/useMe';
 import { Button, Field, Input } from '@/components/ui';
 
 type Mode = 'login' | 'register';
 
 export function AuthPage() {
+  const navigate = useNavigate();
+  const me = useMe();
   const [mode, setMode] = useState<Mode>('login');
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [formError, setFormError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const signIn = useAuth((s) => s.signIn);
   const registerUser = useAuth((s) => s.register);
+
+  // Redirect if already signed in
+  if (me) {
+    navigate(me.onboardedAt ? '/' : '/onboarding', { replace: true });
+    return null;
+  }
 
   async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -41,7 +51,11 @@ export function AuthPage() {
             password: string;
           },
         );
+        const { email, password } = parsed.data as { email: string; password: string };
+        await signIn(email, password);
       }
+      // Navigation handled by App.tsx via epoch change, but we can also navigate here
+      // to ensure consistency. App.tsx will re-render and route based on onboardedAt status.
     } catch (err) {
       // Convex surfaces thrown errors as "CODE: message"; show just the sentence.
       const raw = err instanceof Error ? err.message : '';

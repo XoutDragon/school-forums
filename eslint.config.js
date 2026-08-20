@@ -7,8 +7,8 @@ export default tseslint.config(
     ignores: [
       '**/dist/**',
       '**/node_modules/**',
-      '**/prisma/migrations/**',
       'client/src/generated/**',
+      'convex/_generated/**',
     ],
   },
   js.configs.recommended,
@@ -31,8 +31,8 @@ export default tseslint.config(
     },
   },
   {
-    // Seed scripts, CLI scripts and the server boot banner exist to print things.
-    files: ['server/prisma/**/*.ts', 'server/src/index.ts', '**/*.config.ts', '**/*.config.js'],
+    // Seed and config scripts exist to print things.
+    files: ['convex/seed.ts', '**/*.config.ts', '**/*.config.js'],
     rules: { 'no-console': 'off' },
   },
   {

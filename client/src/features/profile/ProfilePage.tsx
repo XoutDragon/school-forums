@@ -92,7 +92,13 @@ export function ProfilePage() {
               <Button variant="secondary" onClick={() => setEditing((e) => !e)}>
                 {editing ? 'Cancel' : 'Edit profile'}
               </Button>
-              <Button variant="ghost" onClick={() => void signOut()}>
+              <Button
+                variant="ghost"
+                onClick={async () => {
+                  await signOut();
+                  navigate('/welcome', { replace: true });
+                }}
+              >
                 Sign out
               </Button>
             </>

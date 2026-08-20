@@ -3,18 +3,6 @@ dist/
 build/
 .vite/
 
-# Local database + generated Prisma client
-server/dev.db
-server/dev.db-journal
-server/test.db
-server/test.db-journal
-server/prisma/*.db
-server/src/generated/
-
-# User uploads (local disk stand-in for object storage)
-server/uploads/*
-!server/uploads/.gitkeep
-
 .env
 .env.local
 *.log

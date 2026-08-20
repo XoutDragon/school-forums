@@ -67,15 +67,30 @@ export function OnboardingPage() {
   const finish = () => navigate('/');
 
   const skip = async () => {
-    // Skippable but nagged once (section 5.1) — skipping still marks them onboarded,
-    // so the nag does not become a wall.
-    await runOnboarding({
-      majorId: majorId || majors?.[0]?.id,
-      year: year || 'FRESHMAN',
-      interestIds: interests?.slice(0, 3).map((i) => i.id) ?? [],
-      courseIds: [],
-    }).catch(() => undefined);
-    navigate('/');
+    console.log('Skip clicked', { majors, interests, majorId, interestIds });
+
+    if (!majors?.length || !interests?.length) {
+      console.log('Data not loaded yet, returning');
+      return;
+    }
+
+    const defaultMajorId = majorId || majors[0].id;
+    const defaultInterests = interestIds.length >= 3 ? interestIds : interests.slice(0, 3).map((i) => i.id);
+
+    console.log('Calling onboarding with:', { defaultMajorId, defaultInterests });
+
+    try {
+      const result = await runOnboarding({
+        majorId: defaultMajorId,
+        year: year || 'FRESHMAN',
+        interestIds: defaultInterests,
+        courseIds: [],
+      });
+      console.log('Onboarding result:', result);
+      navigate('/');
+    } catch (error) {
+      console.error('Onboarding error:', error);
+    }
   };
 
   const canAdvance =
