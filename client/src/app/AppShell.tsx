@@ -1,14 +1,10 @@
 import { useEffect } from 'react';
 import { NavLink, Outlet, useLocation } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
-import type { SpaceDto } from '@campusconnect/shared';
-import { SOCKET_EVENTS } from '@campusconnect/shared';
-import { api } from '@/lib/api';
-import { getSocket } from '@/lib/socket';
 import { cn } from '@/lib/utils';
-import { useAuth } from '@/stores/auth';
+import { api } from '@/lib/convexApi';
+import { useQ } from '@/lib/convexHooks';
+import { useMe } from '@/hooks/useMe';
 import { useUi } from '@/stores/ui';
-import { usePresence } from '@/stores/presence';
 import { Avatar } from '@/components/ui';
 import { CommandPalette } from '@/components/CommandPalette';
 import { NotificationBell } from '@/components/NotificationBell';
@@ -24,6 +20,12 @@ import {
   IconTag,
   IconUsers,
 } from '@/components/Icons';
+
+interface SpaceSummary {
+  id: string;
+  name: string;
+  type: string;
+}
 
 const PRIMARY = [
   { to: '/', label: 'Home', icon: IconHome, end: true },
@@ -41,26 +43,12 @@ const MOBILE = PRIMARY.filter((item) =>
 );
 
 export function AppShell() {
-  const user = useAuth((s) => s.user);
+  const me = useMe();
   const { theme, toggleTheme, setPaletteOpen } = useUi();
-  const setOnline = usePresence((s) => s.setOnline);
   const location = useLocation();
 
-  const { data: spaces } = useQuery({
-    queryKey: ['spaces'],
-    queryFn: () => api.get<SpaceDto[]>('/spaces'),
-  });
-
-  // One socket for the app's whole lifetime; presence is global, not per-view.
-  useEffect(() => {
-    const socket = getSocket();
-    const onPresence = ({ userId, isOnline }: { userId: string; isOnline: boolean }) =>
-      setOnline(userId, isOnline);
-    socket.on(SOCKET_EVENTS.presenceUpdate, onPresence);
-    return () => {
-      socket.off(SOCKET_EVENTS.presenceUpdate, onPresence);
-    };
-  }, [setOnline]);
+  // Live subscription: joining a space anywhere updates the rail immediately.
+  const spaces = useQ<SpaceSummary[]>(api.spaces.mine);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -98,8 +86,6 @@ export function AppShell() {
           </RailLink>
         ))}
 
-        {/* Spaces the student belongs to, as their own strip — Discord's shape, but the
-            divider makes it clear these are memberships rather than app sections. */}
         {spaces && spaces.length > 0 && (
           <>
             <div className="my-1.5 h-px w-8 bg-edge" />
@@ -127,13 +113,13 @@ export function AppShell() {
           >
             {theme === 'dark' ? <IconSun /> : <IconMoon />}
           </button>
-          {user && (
+          {me && (
             <NavLink
-              to={`/u/${user.username}`}
+              to={`/u/${me.username}`}
               className="mt-0.5 rounded-full ring-offset-2 ring-offset-panel transition hover:ring-2 hover:ring-accent"
               aria-label="Your profile"
             >
-              <Avatar name={user.displayName} src={user.avatarUrl} seed={user.id} size={32} />
+              <Avatar name={me.displayName} src={me.avatarUrl} seed={me.id} size={32} />
             </NavLink>
           )}
         </div>
@@ -150,7 +136,7 @@ export function AppShell() {
         )}
       </main>
 
-      {/* ── Mobile bottom bar (§7). */}
+      {/* ── Mobile bottom bar. */}
       <nav
         aria-label="Primary"
         className="fixed inset-x-0 bottom-0 z-30 flex border-t border-edge bg-panel/95 backdrop-blur md:hidden"
@@ -217,7 +203,7 @@ function RailLink({
   );
 }
 
-function SpaceRailIcon({ space }: { space: SpaceDto }) {
+function SpaceRailIcon({ space }: { space: SpaceSummary }) {
   const TYPE_TONE: Record<string, string> = {
     CLUB: 'text-clubs',
     COURSE: 'text-courses',

@@ -1,16 +1,17 @@
 import { useEffect } from 'react';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
-import type { ChannelDto, MessageDto } from '@campusconnect/shared';
-import { SOCKET_EVENTS } from '@campusconnect/shared';
-import { api } from '@/lib/api';
-import { getSocket } from '@/lib/socket';
 import { timeOfDay } from '@/lib/utils';
+import { api } from '@/lib/convexApi';
+import { useQ } from '@/lib/convexHooks';
 import { Avatar, Skeleton } from '@/components/ui';
 import { Markdown } from '@/features/chat/Markdown';
 import { Composer } from '@/features/chat/Composer';
 import { IconClose } from '@/components/Icons';
+import type { ChannelDto, MessageDto } from '@/features/chat/MessageList';
 
-/** §5.2: a thread is a side panel, so thread traffic never clutters the channel. */
+/**
+ * A thread is a side panel, so thread traffic never clutters the channel (section 5.2).
+ * The query is live, so a reply from anyone appears here without a socket listener.
+ */
 export function ThreadPanel({
   root,
   channel,
@@ -20,25 +21,7 @@ export function ThreadPanel({
   channel: ChannelDto;
   onClose: () => void;
 }) {
-  const queryClient = useQueryClient();
-
-  const { data: messages, isLoading } = useQuery({
-    queryKey: ['thread', root.id],
-    queryFn: () => api.get<MessageDto[]>(`/messages/${root.id}/thread`),
-  });
-
-  useEffect(() => {
-    const socket = getSocket();
-    const onNew = (message: MessageDto) => {
-      if (message.threadRootId === root.id) {
-        void queryClient.invalidateQueries({ queryKey: ['thread', root.id] });
-      }
-    };
-    socket.on(SOCKET_EVENTS.messageNew, onNew);
-    return () => {
-      socket.off(SOCKET_EVENTS.messageNew, onNew);
-    };
-  }, [root.id, queryClient]);
+  const messages = useQ<MessageDto[]>(api.messages.thread, { rootId: root.id });
 
   useEffect(() => {
     const onEsc = (e: KeyboardEvent) => e.key === 'Escape' && onClose();
@@ -65,9 +48,9 @@ export function ThreadPanel({
       </header>
 
       <div className="flex-1 space-y-3 overflow-y-auto p-4">
-        {isLoading
+        {messages === undefined
           ? Array.from({ length: 3 }, (_, i) => <Skeleton key={i} className="h-14" />)
-          : messages?.map((message, i) => (
+          : messages.map((message, i) => (
               <div key={message.id}>
                 <ThreadMessage message={message} />
                 {i === 0 && messages.length > 1 && (

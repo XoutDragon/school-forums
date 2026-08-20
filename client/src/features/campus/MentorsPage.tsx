@@ -1,11 +1,11 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
 import type { PublicUser } from '@campusconnect/shared';
-import { api, ApiRequestError, qs } from '@/lib/api';
-import { useAuth } from '@/stores/auth';
 import { Avatar, Badge, Button, Card, EmptyState, Skeleton, Textarea } from '@/components/ui';
 import { FilterChip } from '@/features/courses/CourseListPage';
+import { api } from '@/lib/convexApi';
+import { useM, useQ, usePublicQ } from '@/lib/convexHooks';
+import { useMe } from '@/hooks/useMe';
 
 interface Mentor {
   id: string;
@@ -23,30 +23,24 @@ interface Major {
 }
 
 export function MentorsPage() {
-  const me = useAuth((s) => s.user);
+  const me = useMe();
   const [majorId, setMajorId] = useState<string>(me?.major?.id ?? '');
   const [requesting, setRequesting] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const queryClient = useQueryClient();
 
-  const { data: majors } = useQuery({
-    queryKey: ['majors'],
-    queryFn: () => api.get<Major[]>('/catalog/majors'),
-  });
+  const majors = usePublicQ<Major[]>(api.catalog.majors);
+  const mentors = useQ<Mentor[]>(api.campus.mentors, majorId ? { majorId } : {});
+  const isLoading = mentors === undefined;
 
-  const { data: mentors, isLoading } = useQuery({
-    queryKey: ['mentors', majorId],
-    queryFn: () => api.get<Mentor[]>(`/campus/mentors${qs({ majorId })}`),
-  });
+  const sendRequest = useM(api.campus.requestMentor);
 
   const request = async (mentor: Mentor, message: string) => {
     setError(null);
     try {
-      await api.post(`/campus/mentors/${mentor.user.id}/request`, { message });
+      await sendRequest({ mentorId: mentor.user.id, message });
       setRequesting(null);
-      void queryClient.invalidateQueries({ queryKey: ['mentors', majorId] });
     } catch (err) {
-      setError(err instanceof ApiRequestError ? err.message : "That didn't send.");
+      setError(err instanceof Error ? err.message : "That didn't send.");
     }
   };
 

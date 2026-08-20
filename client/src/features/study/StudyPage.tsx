@@ -1,12 +1,12 @@
 import { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
 import type { BuddyMatchDto, PublicUser } from '@campusconnect/shared';
 import { AVAILABILITY_SLOTS, DAY_BLOCKS, WEEKDAYS } from '@campusconnect/shared';
-import { api } from '@/lib/api';
 import { cn } from '@/lib/utils';
 import { Avatar, Badge, Button, Card, EmptyState, Eyebrow, Skeleton, Tabs } from '@/components/ui';
 import { IconSparkle } from '@/components/Icons';
+import { api } from '@/lib/convexApi';
+import { useM, useQ } from '@/lib/convexHooks';
 
 interface Group {
   id: string;
@@ -61,20 +61,18 @@ export function StudyPage() {
 }
 
 function Groups() {
-  const queryClient = useQueryClient();
-  const { data: groups, isLoading } = useQuery({
-    queryKey: ['study-groups'],
-    queryFn: () => api.get<Group[]>('/study/groups'),
-  });
+  const groups = useQ<Group[]>(api.study.groups);
+  const isLoading = groups === undefined;
+
+  const requestJoin = useM(api.study.requestToJoin);
+  const approveMember = useM(api.study.approveMember);
 
   const request = async (groupId: string) => {
-    await api.post(`/study/groups/${groupId}/request`);
-    void queryClient.invalidateQueries({ queryKey: ['study-groups'] });
+    await requestJoin({ groupId });
   };
 
   const approve = async (groupId: string, userId: string) => {
-    await api.post(`/study/groups/${groupId}/approve/${userId}`);
-    void queryClient.invalidateQueries({ queryKey: ['study-groups'] });
+    await approveMember({ groupId, userId });
   };
 
   if (isLoading) {
@@ -192,25 +190,18 @@ function Groups() {
 
 function Buddies() {
   const navigate = useNavigate();
-  const queryClient = useQueryClient();
   const [busyId, setBusyId] = useState<string | null>(null);
 
-  const {
-    data: matches,
-    isLoading,
-    refetch,
-  } = useQuery({
-    queryKey: ['buddy-matches'],
-    queryFn: () => api.get<BuddyMatchDto[]>('/study/buddy/matches'),
-  });
+  const matches = useQ<BuddyMatchDto[]>(api.study.matches);
+  const isLoading = matches === undefined;
+
+  const findMatches = useM(api.study.findMatches);
+  const respond = useM(api.study.respondToMatch);
 
   const act = async (match: BuddyMatchDto, action: 'CONNECT' | 'DISMISS') => {
     setBusyId(match.id);
-    const result = await api.post<{ conversationId?: string }>(`/study/buddy/matches/${match.id}`, {
-      action,
-    });
+    const result = await respond({ matchId: match.id, action });
     setBusyId(null);
-    void queryClient.invalidateQueries({ queryKey: ['buddy-matches'] });
     if (action === 'CONNECT' && result.conversationId) navigate(`/dms/${result.conversationId}`);
   };
 
@@ -223,7 +214,7 @@ function Buddies() {
         title="No matches yet"
         body="Matching uses your courses, major, year, interests and free hours. Fill in your week and try again."
         action={
-          <Button size="sm" onClick={() => void refetch()}>
+          <Button size="sm" onClick={() => void findMatches({})}>
             Find matches
           </Button>
         }
@@ -279,16 +270,14 @@ function Buddies() {
 /** The 7×5 availability grid (§5.6). Also the visual motif the study feature is built on:
  *  a week you can actually see, rather than a set of dropdowns. */
 function AvailabilityEditor() {
-  const queryClient = useQueryClient();
   const [grid, setGrid] = useState<boolean[]>(() => Array<boolean>(AVAILABILITY_SLOTS).fill(false));
   const [lookingFor, setLookingFor] = useState<string[]>(['STUDY_PARTNER']);
   const [saved, setSaved] = useState(false);
   const [busy, setBusy] = useState(false);
 
-  const { data: profile } = useQuery({
-    queryKey: ['buddy-profile'],
-    queryFn: () => api.get<BuddyProfile | null>('/study/buddy/profile'),
-  });
+  const profile = useQ<BuddyProfile | null>(api.study.buddyProfile);
+  const saveProfile = useM(api.study.saveBuddyProfile);
+  const findMatches = useM(api.study.findMatches);
 
   useEffect(() => {
     if (profile) {
@@ -307,14 +296,10 @@ function AvailabilityEditor() {
 
   const save = async () => {
     setBusy(true);
-    await api.put('/study/buddy/profile', {
-      isActive: true,
-      lookingFor,
-      availability: grid,
-    });
+    await saveProfile({ isActive: true, lookingFor, availability: grid });
+    await findMatches({});
     setBusy(false);
     setSaved(true);
-    void queryClient.invalidateQueries({ queryKey: ['buddy-matches'] });
   };
 
   const GOALS = [

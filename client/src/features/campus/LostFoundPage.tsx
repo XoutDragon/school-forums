@@ -1,10 +1,7 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
 import type { PublicUser } from '@campusconnect/shared';
-import { api } from '@/lib/api';
 import { relativeTime } from '@/lib/utils';
-import { useAuth } from '@/stores/auth';
 import {
   Avatar,
   Badge,
@@ -17,6 +14,9 @@ import {
   Textarea,
 } from '@/components/ui';
 import { IconMapPin } from '@/components/Icons';
+import { api } from '@/lib/convexApi';
+import { useM, useQ } from '@/lib/convexHooks';
+import { useMe } from '@/hooks/useMe';
 
 interface Item {
   id: string;
@@ -32,18 +32,13 @@ interface Item {
 
 export function LostFoundPage() {
   const [posting, setPosting] = useState(false);
-  const queryClient = useQueryClient();
-  const me = useAuth((s) => s.user);
+  const me = useMe();
 
-  const { data: items, isLoading } = useQuery({
-    queryKey: ['lost-found'],
-    queryFn: () => api.get<Item[]>('/campus/lost-found'),
-  });
+  const items = useQ<Item[]>(api.campus.lostFound);
+  const isLoading = items === undefined;
 
-  const resolve = async (id: string) => {
-    await api.post(`/campus/lost-found/${id}/resolve`);
-    void queryClient.invalidateQueries({ queryKey: ['lost-found'] });
-  };
+  const report = useM(api.campus.reportLostFound);
+  const resolveItem = useM(api.campus.resolveLostFound);
 
   return (
     <div className="space-y-6">
@@ -64,14 +59,13 @@ export function LostFoundPage() {
             onSubmit={async (e) => {
               e.preventDefault();
               const form = new FormData(e.currentTarget);
-              await api.post('/campus/lost-found', {
-                kind: form.get('kind'),
-                title: form.get('title'),
-                description: form.get('description'),
-                location: form.get('location'),
+              await report({
+                kind: form.get('kind') as 'LOST' | 'FOUND',
+                title: String(form.get('title')),
+                description: String(form.get('description')),
+                location: String(form.get('location')),
               });
               setPosting(false);
-              void queryClient.invalidateQueries({ queryKey: ['lost-found'] });
             }}
           >
             <fieldset>
@@ -161,7 +155,11 @@ export function LostFoundPage() {
               </div>
 
               {item.reporter.id === me?.id && item.status === 'OPEN' && (
-                <Button size="sm" variant="secondary" onClick={() => void resolve(item.id)}>
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  onClick={() => void resolveItem({ itemId: item.id })}
+                >
                   Mark resolved
                 </Button>
               )}

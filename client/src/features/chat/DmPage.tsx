@@ -1,81 +1,69 @@
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
-import type { PublicUser } from '@campusconnect/shared';
-import { SOCKET_EVENTS } from '@campusconnect/shared';
-import { api } from '@/lib/api';
-import { getSocket } from '@/lib/socket';
 import { cn, relativeTime, timeOfDay } from '@/lib/utils';
-import { useAuth } from '@/stores/auth';
+import { api } from '@/lib/convexApi';
+import { useM, useQ } from '@/lib/convexHooks';
+import { useMe } from '@/hooks/useMe';
 import { Avatar, EmptyState, Skeleton } from '@/components/ui';
 import { Markdown } from '@/features/chat/Markdown';
 import { IconSend } from '@/components/Icons';
+
+interface PublicUser {
+  id: string;
+  username: string;
+  displayName: string;
+  avatarUrl: string | null;
+}
 
 interface Conversation {
   id: string;
   isGroup: boolean;
   title: string;
   members: PublicUser[];
-  lastMessage: { excerpt: string; createdAt: string } | null;
+  lastMessage: { excerpt: string; createdAt: number } | null;
   unreadCount: number;
 }
 
 interface DirectMessage {
   id: string;
   content: string;
-  author: PublicUser;
-  createdAt: string;
-  deletedAt: string | null;
+  author: PublicUser | null;
+  createdAt: number;
+  deletedAt: number | null;
 }
 
 export function DmPage() {
   const { conversationId } = useParams();
   const navigate = useNavigate();
-  const queryClient = useQueryClient();
-  const me = useAuth((s) => s.user);
+  const me = useMe();
   const [draft, setDraft] = useState('');
   const scrollRef = useRef<HTMLDivElement>(null);
 
-  const { data: conversations, isLoading } = useQuery({
-    queryKey: ['dms'],
-    queryFn: () => api.get<Conversation[]>('/dms'),
-  });
+  const conversations = useQ<Conversation[]>(api.dms.list);
+  const messages = useQ<DirectMessage[]>(
+    api.dms.messages,
+    conversationId ? { conversationId } : 'skip',
+  );
 
-  const { data: messages } = useQuery({
-    queryKey: ['dm-messages', conversationId],
-    queryFn: () => api.get<DirectMessage[]>(`/dms/${conversationId}/messages`),
-    enabled: Boolean(conversationId),
-  });
+  const sendMessage = useM(api.dms.send);
+  const markRead = useM(api.dms.markRead);
 
   const active = conversations?.find((c) => c.id === conversationId);
-
-  useEffect(() => {
-    const socket = getSocket();
-    const onNew = (payload: { conversationId?: string; isDirect?: boolean }) => {
-      if (!payload.isDirect) return;
-      void queryClient.invalidateQueries({ queryKey: ['dms'] });
-      if (payload.conversationId === conversationId) {
-        void queryClient.invalidateQueries({ queryKey: ['dm-messages', conversationId] });
-      }
-    };
-    socket.on(SOCKET_EVENTS.messageNew, onNew);
-    return () => {
-      socket.off(SOCKET_EVENTS.messageNew, onNew);
-    };
-  }, [conversationId, queryClient]);
 
   useEffect(() => {
     const el = scrollRef.current;
     if (el) el.scrollTop = el.scrollHeight;
   }, [messages]);
 
+  useEffect(() => {
+    if (conversationId) void markRead({ conversationId });
+  }, [conversationId, messages, markRead]);
+
   const send = async () => {
     const content = draft.trim();
     if (!content || !conversationId) return;
     setDraft('');
-    await api.post(`/dms/${conversationId}/messages`, { content });
-    void queryClient.invalidateQueries({ queryKey: ['dm-messages', conversationId] });
-    void queryClient.invalidateQueries({ queryKey: ['dms'] });
+    await sendMessage({ conversationId, content });
   };
 
   return (
@@ -93,9 +81,9 @@ export function DmPage() {
         </header>
 
         <div className="flex-1 overflow-y-auto p-2">
-          {isLoading ? (
+          {conversations === undefined ? (
             Array.from({ length: 5 }, (_, i) => <Skeleton key={i} className="mb-1.5 h-14" />)
-          ) : !conversations?.length ? (
+          ) : !conversations.length ? (
             <p className="px-3 py-10 text-center text-sm text-dim">
               No conversations yet. Waving at someone or connecting with a study buddy starts one.
             </p>
@@ -166,10 +154,10 @@ export function DmPage() {
 
             <div ref={scrollRef} className="flex-1 space-y-2 overflow-y-auto p-4">
               {messages?.map((m) => {
-                const mine = m.author.id === me?.id;
+                const mine = m.author?.id === me?.id;
                 return (
                   <div key={m.id} className={cn('flex gap-2.5', mine && 'flex-row-reverse')}>
-                    {!mine && (
+                    {!mine && m.author && (
                       <Avatar
                         name={m.author.displayName}
                         src={m.author.avatarUrl}

@@ -1,6 +1,6 @@
 import { v } from 'convex/values';
 import type { Doc, Id } from './_generated/dataModel';
-import type { QueryCtx } from './_generated/server';
+import type { MutationCtx, QueryCtx } from './_generated/server';
 import { mutation, query } from './_generated/server';
 import {
   assertCanView,
@@ -10,6 +10,7 @@ import {
   requireUser,
   roleIn,
 } from './lib/auth';
+import { anonAlias } from './lib/anon';
 import { toMessageDto, type MessageDto } from './lib/serialize';
 
 /**
@@ -298,8 +299,6 @@ export const typingIn = query({
       .withIndex('by_channel', (q) => q.eq('typingInChannel', args.channelId))
       .collect();
 
-    const { anonAlias } = await import('./lib/anon');
-
     return (
       await Promise.all(
         rows
@@ -321,13 +320,13 @@ export const typingIn = query({
 // ── Helpers ────────────────────────────────────────────────────────────────
 
 async function markRead(
-  ctx: { db: any },
+  ctx: MutationCtx,
   channelId: Id<'channels'>,
   userId: Id<'users'>,
 ): Promise<void> {
   const existing = await ctx.db
     .query('channelReads')
-    .withIndex('by_channel_user', (q: any) => q.eq('channelId', channelId).eq('userId', userId))
+    .withIndex('by_channel_user', (q) => q.eq('channelId', channelId).eq('userId', userId))
     .unique();
 
   if (existing) await ctx.db.patch(existing._id, { lastReadAt: Date.now() });
@@ -337,7 +336,7 @@ async function markRead(
 const MENTION_RE = /@([a-z0-9_]{3,24})/g;
 
 async function fanOutMentions(
-  ctx: { db: any },
+  ctx: MutationCtx,
   content: string,
   author: Doc<'users'>,
   spaceId: Id<'spaces'>,
@@ -350,7 +349,7 @@ async function fanOutMentions(
   for (const username of usernames) {
     const mentioned = await ctx.db
       .query('users')
-      .withIndex('by_username', (q: any) => q.eq('username', username))
+      .withIndex('by_username', (q) => q.eq('username', username))
       .unique();
 
     if (!mentioned || mentioned._id === author._id || mentioned.deletedAt) continue;

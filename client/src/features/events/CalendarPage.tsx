@@ -1,11 +1,11 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
 import type { EventDto } from '@campusconnect/shared';
-import { api, qs } from '@/lib/api';
 import { cn } from '@/lib/utils';
 import { Badge, Button, Card, EmptyState, Eyebrow, Skeleton } from '@/components/ui';
 import { IconMapPin } from '@/components/Icons';
+import { api } from '@/lib/convexApi';
+import { useQ } from '@/lib/convexHooks';
 
 export function CalendarPage() {
   const [view, setView] = useState<'list' | 'month'>('list');
@@ -18,15 +18,13 @@ export function CalendarPage() {
   const range =
     view === 'month'
       ? {
-          from: new Date(anchor.getFullYear(), anchor.getMonth(), 1).toISOString(),
-          to: new Date(anchor.getFullYear(), anchor.getMonth() + 1, 0, 23, 59).toISOString(),
+          from: new Date(anchor.getFullYear(), anchor.getMonth(), 1).getTime(),
+          to: new Date(anchor.getFullYear(), anchor.getMonth() + 1, 0, 23, 59).getTime(),
         }
       : {};
 
-  const { data: events, isLoading } = useQuery({
-    queryKey: ['events', view, mine, monthOffset],
-    queryFn: () => api.get<EventDto[]>(`/events${qs({ ...range, mine })}`),
-  });
+  const events = useQ<EventDto[]>(api.events.list, { ...range, mine });
+  const isLoading = events === undefined;
 
   return (
     <div className="space-y-6">

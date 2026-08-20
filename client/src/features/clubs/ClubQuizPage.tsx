@@ -1,9 +1,9 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
-import { api } from '@/lib/api';
 import { cn } from '@/lib/utils';
 import { Avatar, Badge, Button, Card, EmptyState, Eyebrow, Skeleton } from '@/components/ui';
+import { api } from '@/lib/convexApi';
+import { useQ, usePublicQ } from '@/lib/convexHooks';
 
 interface Question {
   id: string;
@@ -25,24 +25,18 @@ interface Result {
 
 export function ClubQuizPage() {
   const [answers, setAnswers] = useState<Record<string, string[]>>({});
-  const [results, setResults] = useState<Result[] | null>(null);
-  const [busy, setBusy] = useState(false);
+  const [submitted, setSubmitted] = useState(false);
 
-  const { data: questions } = useQuery({
-    queryKey: ['club-quiz'],
-    queryFn: () => api.get<Question[]>('/clubs/quiz/questions'),
-  });
+  const questions = usePublicQ<Question[]>(api.clubs.quizQuestions);
+  // Results are a query, so they are only fetched once the student has answered.
+  const liveResults = useQ<Result[]>(api.clubs.quizResults, submitted ? { tags: allTags } : 'skip');
 
   if (!questions) return <Skeleton className="h-96 w-full" />;
 
   const answered = Object.keys(answers).length;
   const allTags = Object.values(answers).flat();
 
-  const submit = async () => {
-    setBusy(true);
-    setResults(await api.post<Result[]>('/clubs/quiz/results', { tags: allTags }));
-    setBusy(false);
-  };
+  const results = submitted ? liveResults : null;
 
   if (results) {
     return (
@@ -108,7 +102,7 @@ export function ClubQuizPage() {
         <Button
           variant="secondary"
           onClick={() => {
-            setResults(null);
+            setSubmitted(false);
             setAnswers({});
           }}
         >
@@ -160,7 +154,7 @@ export function ClubQuizPage() {
       </div>
 
       <div className="flex items-center gap-3">
-        <Button disabled={answered === 0} loading={busy} onClick={() => void submit()}>
+        <Button disabled={answered === 0} onClick={() => setSubmitted(true)}>
           {answered < questions.length
             ? `Show results (${answered}/${questions.length} answered)`
             : 'Show my top 5'}

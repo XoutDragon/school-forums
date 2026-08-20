@@ -1,6 +1,5 @@
 import { useState } from 'react';
-import { loginSchema, registerSchema, type MeUser } from '@campusconnect/shared';
-import { api, ApiRequestError } from '@/lib/api';
+import { loginSchema, registerSchema } from '@campusconnect/shared';
 import { useAuth } from '@/stores/auth';
 import { Button, Field, Input } from '@/components/ui';
 
@@ -11,7 +10,8 @@ export function AuthPage() {
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [formError, setFormError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const setUser = useAuth((s) => s.setUser);
+  const signIn = useAuth((s) => s.signIn);
+  const registerUser = useAuth((s) => s.register);
 
   async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -29,12 +29,24 @@ export function AuthPage() {
 
     setBusy(true);
     try {
-      const user = await api.post<MeUser>(`/auth/${mode}`, parsed.data);
-      setUser(user);
+      if (mode === 'login') {
+        const { email, password } = parsed.data as { email: string; password: string };
+        await signIn(email, password);
+      } else {
+        await registerUser(
+          parsed.data as {
+            email: string;
+            username: string;
+            displayName: string;
+            password: string;
+          },
+        );
+      }
     } catch (err) {
-      setFormError(
-        err instanceof ApiRequestError ? err.message : "Couldn't reach the server. Is it running?",
-      );
+      // Convex surfaces thrown errors as "CODE: message"; show just the sentence.
+      const raw = err instanceof Error ? err.message : '';
+      const match = /(?:BAD_REQUEST|CONFLICT|UNAUTHORIZED|FORBIDDEN|NOT_FOUND): (.*)/.exec(raw);
+      setFormError(match?.[1] ?? 'Could not reach Convex. Is `npx convex dev` running?');
     } finally {
       setBusy(false);
     }

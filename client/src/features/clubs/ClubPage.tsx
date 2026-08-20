@@ -1,9 +1,9 @@
 import { Link, useParams } from 'react-router-dom';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
 import type { PublicUser } from '@campusconnect/shared';
-import { api } from '@/lib/api';
 import { Avatar, Badge, Button, Card, EmptyState, Eyebrow, Skeleton } from '@/components/ui';
 import { IconMapPin } from '@/components/Icons';
+import { api } from '@/lib/convexApi';
+import { useM, useQ } from '@/lib/convexHooks';
 
 interface ClubDetail {
   id: string;
@@ -19,25 +19,23 @@ interface ClubDetail {
   spaceId: string | null;
   myRole: string | null;
   execs: { role: string; user: PublicUser }[];
-  events: { id: string; title: string; startsAt: string; location: string }[];
+  events: { id: string; title: string; startsAt: number; location: string }[];
   photos: { url: string; name: string }[];
 }
 
 export function ClubPage() {
   const { slug } = useParams();
-  const queryClient = useQueryClient();
 
-  const { data: club, isLoading } = useQuery({
-    queryKey: ['club', slug],
-    queryFn: () => api.get<ClubDetail>(`/clubs/${slug}`),
-    enabled: Boolean(slug),
-  });
+  const club = useQ<ClubDetail>(api.clubs.getBySlug, slug ? { slug } : 'skip');
+  const isLoading = club === undefined;
+
+  const join = useM(api.clubs.setMembership);
+  const leaveClub = useM(api.clubs.leave);
 
   const setMembership = async (role: 'MEMBER' | 'FOLLOWER' | null) => {
-    if (role) await api.post(`/clubs/${club!.id}/membership`, { role });
-    else await api.del(`/clubs/${club!.id}/membership`);
-    void queryClient.invalidateQueries({ queryKey: ['club', slug] });
-    void queryClient.invalidateQueries({ queryKey: ['spaces'] });
+    if (!club) return;
+    if (role) await join({ clubId: club.id, role });
+    else await leaveClub({ clubId: club.id });
   };
 
   if (isLoading || !club) return <Skeleton className="h-96 w-full" />;
@@ -202,7 +200,7 @@ export function ClubPage() {
 
 /** §5.4 exec mini-dashboard. Announcing cross-posts to the space and pings followers. */
 function ExecPanel({ clubId }: { clubId: string }) {
-  const queryClient = useQueryClient();
+  const announce = useM(api.clubs.announce);
 
   return (
     <Card className="border-clubs/30">
@@ -213,9 +211,8 @@ function ExecPanel({ clubId }: { clubId: string }) {
           e.preventDefault();
           const form = e.currentTarget;
           const content = new FormData(form).get('content') as string;
-          await api.post(`/clubs/${clubId}/announce`, { content });
+          await announce({ clubId, content });
           form.reset();
-          void queryClient.invalidateQueries({ queryKey: ['notifications'] });
         }}
       >
         <textarea

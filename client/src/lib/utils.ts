@@ -5,8 +5,12 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
-/** Chat timestamps: relative while it still reads as "just now", absolute after. */
-export function relativeTime(iso: string): string {
+/** Chat timestamps: relative while it still reads as "just now", absolute after.
+ *  Accepts a number as well as a string: Convex stores times as epoch milliseconds,
+ *  where the REST API returned ISO strings. */
+export type Timestamp = string | number;
+
+export function relativeTime(iso: Timestamp): string {
   const then = new Date(iso).getTime();
   const diff = Date.now() - then;
   const minutes = Math.floor(diff / 60_000);
@@ -20,11 +24,11 @@ export function relativeTime(iso: string): string {
   return new Date(iso).toLocaleDateString('en-CA', { month: 'short', day: 'numeric' });
 }
 
-export function timeOfDay(iso: string): string {
+export function timeOfDay(iso: Timestamp): string {
   return new Date(iso).toLocaleTimeString('en-CA', { hour: 'numeric', minute: '2-digit' });
 }
 
-export function dayStamp(iso: string): string {
+export function dayStamp(iso: Timestamp): string {
   const date = new Date(iso);
   const today = new Date();
   const yesterday = new Date(today.getTime() - 864e5);

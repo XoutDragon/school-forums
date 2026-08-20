@@ -1,10 +1,10 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
 import type { CourseDto } from '@campusconnect/shared';
-import { api, qs } from '@/lib/api';
 import { cn } from '@/lib/utils';
 import { Card, Code, EmptyState, Input, Skeleton } from '@/components/ui';
+import { api } from '@/lib/convexApi';
+import { useQ, usePublicQ } from '@/lib/convexHooks';
 
 interface Major {
   id: string;
@@ -16,15 +16,12 @@ export function CourseListPage() {
   const [search, setSearch] = useState('');
   const [majorId, setMajorId] = useState('');
 
-  const { data: majors } = useQuery({
-    queryKey: ['majors'],
-    queryFn: () => api.get<Major[]>('/catalog/majors'),
+  const majors = usePublicQ<Major[]>(api.catalog.majors);
+  const courses = useQ<CourseDto[]>(api.courses.list, {
+    search,
+    ...(majorId ? { majorId } : {}),
   });
-
-  const { data: courses, isLoading } = useQuery({
-    queryKey: ['courses', search, majorId],
-    queryFn: () => api.get<CourseDto[]>(`/courses${qs({ q: search, majorId })}`),
-  });
+  const isLoading = courses === undefined;
 
   return (
     <div className="space-y-6">

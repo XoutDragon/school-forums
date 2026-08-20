@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
-import { api, qs } from '@/lib/api';
 import { cn } from '@/lib/utils';
 import { useUi } from '@/stores/ui';
 import { IconSearch } from '@/components/Icons';
+import { api } from '@/lib/convexApi';
+import { useQ } from '@/lib/convexHooks';
 
 interface Hit {
   kind: string;
@@ -44,12 +44,11 @@ export function CommandPalette() {
 
   const debounced = useDebounced(term, 180);
 
-  const { data, isFetching } = useQuery({
-    queryKey: ['search', debounced, scope],
-    queryFn: () =>
-      api.get<Record<string, Hit[]>>(`/search${qs({ q: debounced, scope, limit: 8 })}`),
-    enabled: debounced.trim().length > 0,
-  });
+  const data = useQ<Record<string, Hit[]>>(
+    api.search.search,
+    debounced.trim() ? { q: debounced, scope, limit: 8 } : 'skip',
+  );
+  const isFetching = data === undefined && debounced.trim().length > 0;
 
   // One flat list drives keyboard navigation; the grouping is presentational only.
   const flat = useMemo(() => Object.values(data ?? {}).flat(), [data]);

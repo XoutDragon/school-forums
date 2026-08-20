@@ -1,13 +1,12 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import type { CourseDto, MeUser } from '@campusconnect/shared';
+import type { CourseDto } from '@campusconnect/shared';
 import { YearEnum } from '@campusconnect/shared';
-import { api, qs } from '@/lib/api';
 import { cn, YEAR_LABELS } from '@/lib/utils';
-import { useAuth } from '@/stores/auth';
 import { Button, Code, Input, Skeleton } from '@/components/ui';
 import { IconCheck } from '@/components/Icons';
+import { api } from '@/lib/convexApi';
+import { useM, useQ, usePublicQ } from '@/lib/convexHooks';
 
 interface Major {
   id: string;
@@ -36,63 +35,46 @@ export function OnboardingPage() {
   const [interestIds, setInterestIds] = useState<string[]>([]);
   const [courseIds, setCourseIds] = useState<string[]>([]);
   const [courseSearch, setCourseSearch] = useState('');
-  const [suggestions, setSuggestions] = useState<Suggestions | null>(null);
   const [joined, setJoined] = useState<Set<string>>(new Set());
 
   const navigate = useNavigate();
-  const queryClient = useQueryClient();
-  const setUser = useAuth((s) => s.setUser);
 
-  const { data: majors } = useQuery({
-    queryKey: ['majors'],
-    queryFn: () => api.get<Major[]>('/catalog/majors'),
-  });
-  const { data: interests } = useQuery({
-    queryKey: ['interests'],
-    queryFn: () => api.get<Interest[]>('/catalog/interests'),
-  });
-  const { data: courses } = useQuery({
-    queryKey: ['courses', courseSearch, majorId],
-    queryFn: () => api.get<CourseDto[]>(`/courses${qs({ q: courseSearch, majorId })}`),
-    enabled: step === 3,
-  });
+  const majors = usePublicQ<Major[]>(api.catalog.majors);
+  const interests = usePublicQ<Interest[]>(api.catalog.interests);
+  const courses = useQ<CourseDto[]>(
+    api.courses.list,
+    step === 3 ? { search: courseSearch, ...(majorId ? { majorId } : {}) } : 'skip',
+  );
 
-  const submit = useMutation({
-    mutationFn: () =>
-      api.post<Suggestions>('/users/onboarding', {
-        majorId,
-        year,
-        interestIds,
-        // The wizard is term-agnostic; the server stamps the current term itself.
-        courses: courseIds.map((courseId) => ({ courseId, term: currentTerm() })),
-      }),
-    onSuccess: async (data) => {
-      setSuggestions(data);
+  const runOnboarding = useM(api.users.onboard);
+  const joinSpace = useM(api.spaces.join);
+  const joinClub = useM(api.clubs.setMembership);
+  const suggestionData = useQ<Suggestions>(api.users.suggestions, step === 4 ? {} : 'skip');
+
+  const [submitting, setSubmitting] = useState(false);
+
+  // The wizard is term-agnostic; the server stamps the current term itself.
+  const submit = async () => {
+    setSubmitting(true);
+    try {
+      await runOnboarding({ majorId, year, interestIds, courseIds });
       setStep(4);
-      const me = await api.get<MeUser>('/auth/me');
-      setUser(me);
-    },
-  });
-
-  const finish = async () => {
-    await queryClient.invalidateQueries();
-    navigate('/');
+    } finally {
+      setSubmitting(false);
+    }
   };
 
+  const finish = () => navigate('/');
+
   const skip = async () => {
-    // "Skippable but nagged once" (§5.1) — skipping still marks them onboarded so the
-    // nag doesn't become a wall.
-    await api
-      .post('/users/onboarding', {
-        majorId: majorId || majors?.[0]?.id,
-        year: year || 'FRESHMAN',
-        interestIds: interests?.slice(0, 3).map((i) => i.id) ?? [],
-        courses: [],
-      })
-      .catch(() => undefined);
-    const me = await api.get<MeUser>('/auth/me').catch(() => null);
-    if (me) setUser(me);
-    await queryClient.invalidateQueries();
+    // Skippable but nagged once (section 5.1) — skipping still marks them onboarded,
+    // so the nag does not become a wall.
+    await runOnboarding({
+      majorId: majorId || majors?.[0]?.id,
+      year: year || 'FRESHMAN',
+      interestIds: interests?.slice(0, 3).map((i) => i.id) ?? [],
+      courseIds: [],
+    }).catch(() => undefined);
     navigate('/');
   };
 
@@ -267,50 +249,50 @@ export function OnboardingPage() {
           </Step>
         )}
 
-        {step === 4 && suggestions && (
+        {step === 4 && suggestionData && (
           <Step
             title="Here's where you'd fit."
             body="One click each. You can leave any of them later."
           >
             <div className="space-y-2.5">
-              {suggestions.majorSpace && (
+              {suggestionData.majorSpace && (
                 <JoinRow
-                  label={suggestions.majorSpace.name}
+                  label={suggestionData.majorSpace.name}
                   reason="Your major's community"
-                  joined={joined.has(suggestions.majorSpace.id)}
+                  joined={joined.has(suggestionData.majorSpace.id)}
                   onJoin={async () => {
-                    await api.post(`/spaces/${suggestions.majorSpace!.id}/join`);
-                    setJoined((s) => new Set(s).add(suggestions.majorSpace!.id));
+                    await joinSpace({ spaceId: suggestionData.majorSpace!.id });
+                    setJoined((s) => new Set(s).add(suggestionData.majorSpace!.id));
                   }}
                 />
               )}
-              {suggestions.courseSpaces.map((space) => (
+              {suggestionData.courseSpaces.map((space) => (
                 <JoinRow
                   key={space.id}
                   label={space.name}
                   reason="You're taking this course"
                   joined={joined.has(space.id)}
                   onJoin={async () => {
-                    await api.post(`/spaces/${space.id}/join`);
+                    await joinSpace({ spaceId: space.id });
                     setJoined((s) => new Set(s).add(space.id));
                   }}
                 />
               ))}
-              {suggestions.clubs.map((club) => (
+              {suggestionData.clubs.map((club) => (
                 <JoinRow
                   key={club.id}
                   label={club.name}
                   reason={club.reason}
                   joined={joined.has(club.id)}
                   onJoin={async () => {
-                    await api.post(`/clubs/${club.id}/membership`, { role: 'MEMBER' });
+                    await joinClub({ clubId: club.id, role: 'MEMBER' });
                     setJoined((s) => new Set(s).add(club.id));
                   }}
                 />
               ))}
-              {!suggestions.majorSpace &&
-                !suggestions.courseSpaces.length &&
-                !suggestions.clubs.length && (
+              {!suggestionData.majorSpace &&
+                !suggestionData.courseSpaces.length &&
+                !suggestionData.clubs.length && (
                   <p className="rounded-lg border border-dashed border-edge px-4 py-8 text-center text-sm text-dim">
                     Nothing to suggest yet — you've already joined everything that matches. Explore
                     has the rest.
@@ -337,7 +319,7 @@ export function OnboardingPage() {
             </Button>
           )}
           {step === 3 && (
-            <Button className="ml-auto" loading={submit.isPending} onClick={() => submit.mutate()}>
+            <Button className="ml-auto" loading={submitting} onClick={() => void submit()}>
               {courseIds.length ? 'Find my spaces' : 'Skip courses for now'}
             </Button>
           )}
@@ -417,13 +399,4 @@ function groupBy<T>(items: T[], key: (item: T) => string): Record<string, T[]> {
     (acc[k] ??= []).push(item);
     return acc;
   }, {});
-}
-
-function currentTerm(now = new Date()): string {
-  const m = now.getMonth();
-  const y = now.getFullYear();
-  if (m <= 3) return `${y}WI`;
-  if (m <= 5) return `${y}SP`;
-  if (m <= 7) return `${y}SU`;
-  return `${y}FA`;
 }

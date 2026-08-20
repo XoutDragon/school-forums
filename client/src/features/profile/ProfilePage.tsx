@@ -1,8 +1,6 @@
 import { useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
 import type { MeUser, PublicUser } from '@campusconnect/shared';
-import { api } from '@/lib/api';
 import { YEAR_LABELS } from '@/lib/utils';
 import { useAuth } from '@/stores/auth';
 import {
@@ -18,11 +16,14 @@ import {
   Textarea,
 } from '@/components/ui';
 import { IconWave } from '@/components/Icons';
+import { api } from '@/lib/convexApi';
+import { useM, useQ } from '@/lib/convexHooks';
+import { useMe } from '@/hooks/useMe';
 
 interface Profile extends PublicUser {
   bio: string | null;
-  joinedAt: string;
-  badges: { key: string; name: string; emoji: string; description: string; awardedAt: string }[];
+  joinedAt: number;
+  badges: { key: string; name: string; emoji: string; description: string; awardedAt: number }[];
   courses: { status: string; term: string; course: { id: string; code: string; title: string } }[];
   clubs: { id: string; name: string; slug: string; category: string; role: string }[];
   spaces: { id: string; name: string; slug: string; type: string }[];
@@ -32,30 +33,28 @@ interface Profile extends PublicUser {
 
 export function ProfilePage() {
   const { username } = useParams();
-  const me = useAuth((s) => s.user);
-  const logout = useAuth((s) => s.logout);
+  const me = useMe();
+  const signOut = useAuth((s) => s.signOut);
   const navigate = useNavigate();
-  const queryClient = useQueryClient();
   const [editing, setEditing] = useState(false);
 
-  const { data: profile, isLoading } = useQuery({
-    queryKey: ['profile', username],
-    queryFn: () => api.get<Profile>(`/users/${username}`),
-    enabled: Boolean(username),
-  });
+  const profile = useQ<Profile>(api.users.profile, username ? { username } : 'skip');
+  const isLoading = profile === undefined;
+
+  const sendWave = useM(api.users.wave);
+  const openDm = useM(api.dms.open);
 
   if (isLoading || !profile) return <Skeleton className="h-96 w-full" />;
 
   const isSelf = me?.id === profile.id;
 
   const wave = async () => {
-    await api.post(`/users/${profile.id}/wave`, {});
-    void queryClient.invalidateQueries({ queryKey: ['profile', username] });
+    await sendWave({ toId: profile.id });
   };
 
   const message = async () => {
-    const conversation = await api.post<{ id: string }>('/dms', { userIds: [profile.id] });
-    navigate(`/dms/${conversation.id}`);
+    const conversationId = await openDm({ userIds: [profile.id] });
+    navigate(`/dms/${conversationId}`);
   };
 
   return (
@@ -93,7 +92,7 @@ export function ProfilePage() {
               <Button variant="secondary" onClick={() => setEditing((e) => !e)}>
                 {editing ? 'Cancel' : 'Edit profile'}
               </Button>
-              <Button variant="ghost" onClick={() => void logout()}>
+              <Button variant="ghost" onClick={() => void signOut()}>
                 Sign out
               </Button>
             </>
@@ -220,8 +219,7 @@ export function ProfilePage() {
 }
 
 function EditProfile({ me, onDone }: { me: MeUser; onDone: () => void }) {
-  const setUser = useAuth((s) => s.setUser);
-  const queryClient = useQueryClient();
+  const save = useM(api.auth.updateProfile);
   const [busy, setBusy] = useState(false);
 
   return (
@@ -232,18 +230,16 @@ function EditProfile({ me, onDone }: { me: MeUser; onDone: () => void }) {
           e.preventDefault();
           setBusy(true);
           const form = new FormData(e.currentTarget);
-          const updated = await api.patch<MeUser>('/auth/me', {
-            displayName: form.get('displayName'),
-            bio: form.get('bio') || null,
-            pronouns: form.get('pronouns') || null,
+          await save({
+            displayName: String(form.get('displayName')),
+            bio: String(form.get('bio') || ''),
+            pronouns: String(form.get('pronouns') || ''),
             settings: {
               discoverable: form.get('discoverable') === 'on',
               showCourses: form.get('showCourses') === 'on',
-              dmPrivacy: form.get('dmPrivacy'),
+              dmPrivacy: form.get('dmPrivacy') as 'EVERYONE' | 'SHARED_SPACE_ONLY' | 'NOBODY',
             },
           });
-          setUser(updated);
-          await queryClient.invalidateQueries({ queryKey: ['profile', me.username] });
           setBusy(false);
           onDone();
         }}

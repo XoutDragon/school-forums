@@ -1,6 +1,5 @@
-import { useEffect } from 'react';
 import { Navigate, Route, Routes, useLocation } from 'react-router-dom';
-import { useAuth } from '@/stores/auth';
+import { useMe, usePresenceHeartbeat } from '@/hooks/useMe';
 import { AppShell } from '@/app/AppShell';
 import { AuthPage } from '@/features/auth/AuthPage';
 import { OnboardingPage } from '@/features/auth/OnboardingPage';
@@ -23,23 +22,22 @@ import { LostFoundPage } from '@/features/campus/LostFoundPage';
 import { MentorsPage } from '@/features/campus/MentorsPage';
 
 export function App() {
-  const { status, user, restore } = useAuth();
+  const me = useMe();
   const location = useLocation();
 
-  useEffect(() => {
-    void restore();
-  }, [restore]);
+  usePresenceHeartbeat(Boolean(me));
 
-  if (status === 'loading') {
+  // undefined = the subscription has not resolved yet; null = signed out. Treating
+  // them the same would flash the sign-in screen on every refresh.
+  if (me === undefined) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-ink">
-        {/* Deliberately quiet: this is a cookie round-trip, not a real load. */}
         <div className="h-6 w-6 animate-spin rounded-full border-2 border-edge border-t-accent" />
       </div>
     );
   }
 
-  if (status === 'anon') {
+  if (me === null) {
     return (
       <Routes>
         <Route path="/welcome" element={<AuthPage />} />
@@ -48,8 +46,9 @@ export function App() {
     );
   }
 
-  // Onboarding is skippable but insistent: everything redirects here until it's done or skipped.
-  if (user && !user.onboardedAt && location.pathname !== '/onboarding') {
+  // Onboarding is skippable but insistent: everything redirects here until it is
+  // done or skipped.
+  if (!me.onboardedAt && location.pathname !== '/onboarding') {
     return <Navigate to="/onboarding" replace />;
   }
 

@@ -1,26 +1,22 @@
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { BrowserRouter } from 'react-router-dom';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { ConvexProvider } from 'convex/react';
 import { App } from '@/app/App';
+import { convex } from '@/lib/convex';
 import '@/index.css';
 
-const queryClient = new QueryClient({
-  defaultOptions: {
-    queries: {
-      staleTime: 30_000,
-      retry: 1,
-      refetchOnWindowFocus: false,
-    },
-  },
-});
-
+/**
+ * TanStack Query is gone. Convex queries are subscriptions with their own cache and
+ * invalidation, so a second client-side cache layer would only be something to keep
+ * in sync with it.
+ */
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <QueryClientProvider client={queryClient}>
+    <ConvexProvider client={convex}>
       <BrowserRouter>
         <App />
       </BrowserRouter>
-    </QueryClientProvider>
+    </ConvexProvider>
   </StrictMode>,
 );

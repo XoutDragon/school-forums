@@ -1,10 +1,10 @@
 import { Link, useParams } from 'react-router-dom';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
 import type { PublicUser } from '@campusconnect/shared';
-import { api } from '@/lib/api';
 import { YEAR_LABELS } from '@/lib/utils';
 import { Avatar, Button, Card, Code, EmptyState, Eyebrow, Skeleton } from '@/components/ui';
 import { IconWave } from '@/components/Icons';
+import { api } from '@/lib/convexApi';
+import { useM, useQ } from '@/lib/convexHooks';
 
 interface MajorDetail {
   id: string;
@@ -29,13 +29,9 @@ const YEAR_ORDER = ['FRESHMAN', 'SOPHOMORE', 'JUNIOR', 'SENIOR', 'GRAD', 'ALUM']
 
 export function MajorPage() {
   const { id } = useParams();
-  const queryClient = useQueryClient();
 
-  const { data: major, isLoading } = useQuery({
-    queryKey: ['major', id],
-    queryFn: () => api.get<MajorDetail>(`/catalog/majors/${id}`),
-    enabled: Boolean(id),
-  });
+  const major = useQ<MajorDetail>(api.catalog.major, id ? { majorId: id } : 'skip');
+  const isLoading = major === undefined;
 
   if (isLoading || !major) return <Skeleton className="h-96 w-full" />;
 
@@ -45,9 +41,9 @@ export function MajorPage() {
     .sort((a, b) => YEAR_ORDER.indexOf(a.year!) - YEAR_ORDER.indexOf(b.year!));
   const peak = Math.max(1, ...ordered.map((y) => y.count));
 
+  const sendWave = useM(api.users.wave);
   const wave = async (userId: string) => {
-    await api.post(`/users/${userId}/wave`, { context: major.name });
-    void queryClient.invalidateQueries({ queryKey: ['major', id] });
+    await sendWave({ toId: userId, context: major.name });
   };
 
   return (

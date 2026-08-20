@@ -1,22 +1,57 @@
-import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useLayoutEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
-import type { ChannelDto, MessageDto, SpaceRole } from '@campusconnect/shared';
-import { SOCKET_EVENTS } from '@campusconnect/shared';
-import { api, qs } from '@/lib/api';
-import { getSocket } from '@/lib/socket';
 import { cn, dayStamp, timeOfDay } from '@/lib/utils';
-import { useAuth } from '@/stores/auth';
-import { usePresence } from '@/stores/presence';
+import { api } from '@/lib/convexApi';
+import { useM, useQ } from '@/lib/convexHooks';
+import { useMe } from '@/hooks/useMe';
 import { Avatar, EmptyState, Skeleton } from '@/components/ui';
 import { Markdown } from '@/features/chat/Markdown';
 import { IconPin, IconReply, IconThread } from '@/components/Icons';
 
 const QUICK_EMOJI = ['👍', '🙏', '😂', '🔥', '👀', '❤️'];
 
-/** Zustand compares snapshots by reference, so a selector must never build a new value.
- *  Returning `[]` inline from the typing selector re-renders forever. */
-const NO_TYPING: { name: string; at: number }[] = [];
+/**
+ * Message list.
+ *
+ * `api.messages.list` is a live subscription: any mutation touching the table
+ * re-runs it here. The Socket.IO listeners, the local message array and the
+ * reducer that folded socket events into it are all gone — the query result is
+ * the state.
+ */
+
+export interface MessageDto {
+  id: string;
+  channelId: string;
+  content: string;
+  author:
+    | {
+        kind: 'user';
+        user: { id: string; username: string; displayName: string; avatarUrl: string | null };
+      }
+    | { kind: 'anonymous'; anon: { alias: string; animal: string; colorSeed: number } }
+    | { kind: 'deleted' };
+  attachments: { url: string; name: string; mimeType: string; size: number }[];
+  replyToId: string | null;
+  replyTo: { id: string; excerpt: string; authorName: string } | null;
+  threadRootId: string | null;
+  threadReplyCount: number;
+  reactions: { emoji: string; count: number; mine: boolean }[];
+  isPinned: boolean;
+  createdAt: number;
+  editedAt: number | null;
+  deletedAt: number | null;
+}
+
+export interface ChannelDto {
+  id: string;
+  spaceId: string;
+  name: string;
+  topic: string | null;
+  type: string;
+  position: number;
+  isDefault: boolean;
+  unreadCount?: number;
+}
 
 export function MessageList({
   channel,
@@ -24,107 +59,40 @@ export function MessageList({
   onOpenThread,
 }: {
   channel: ChannelDto;
-  spaceRole: SpaceRole | null;
+  spaceRole: string | null;
   onOpenThread: (message: MessageDto) => void;
 }) {
-  const me = useAuth((s) => s.user);
-  const queryClient = useQueryClient();
+  const me = useMe();
   const scrollRef = useRef<HTMLDivElement>(null);
-  const [messages, setMessages] = useState<MessageDto[]>([]);
-  const [loadingMore, setLoadingMore] = useState(false);
-  const [exhausted, setExhausted] = useState(false);
-  const typing = usePresence((s) => s.typing.get(channel.id)) ?? NO_TYPING;
+  const [limit, setLimit] = useState(50);
 
-  const { data, isLoading } = useQuery({
-    queryKey: ['messages', channel.id],
-    queryFn: () => api.get<MessageDto[]>(`/channels/${channel.id}/messages${qs({ limit: 50 })}`),
-  });
+  const messages = useQ<MessageDto[]>(api.messages.list, { channelId: channel.id, limit });
+  const toggleReaction = useM(api.messages.toggleReaction);
+  const removeMessage = useM(api.messages.remove);
 
-  useEffect(() => {
-    if (data) {
-      setMessages(data);
-      setExhausted(data.length < 50);
-    }
-  }, [data]);
+  const typing = useQ<{ name: string }[]>(api.messages.typingIn, { channelId: channel.id }) ?? [];
 
   // Stick to the bottom on new messages, but only if the reader was already there —
-  // yanking someone out of scrollback to show a new message is hostile.
+  // yanking someone out of scrollback is hostile.
   const atBottomRef = useRef(true);
   useLayoutEffect(() => {
     const el = scrollRef.current;
     if (el && atBottomRef.current) el.scrollTop = el.scrollHeight;
   }, [messages]);
 
-  useEffect(() => {
-    const socket = getSocket();
-
-    const onNew = (message: MessageDto) => {
-      if (message.channelId !== channel.id) return;
-      // Thread replies belong to the thread panel, not the main flow.
-      if (message.threadRootId) return;
-      setMessages((prev) => (prev.some((m) => m.id === message.id) ? prev : [...prev, message]));
-    };
-    const onEdit = (message: MessageDto) => {
-      setMessages((prev) => prev.map((m) => (m.id === message.id ? message : m)));
-    };
-    const onDelete = ({ id }: { id: string }) => {
-      setMessages((prev) =>
-        prev.map((m) =>
-          m.id === id ? { ...m, deletedAt: new Date().toISOString(), content: '' } : m,
-        ),
-      );
-    };
-    const onReaction = () =>
-      void queryClient.invalidateQueries({ queryKey: ['messages', channel.id] });
-
-    socket.on(SOCKET_EVENTS.messageNew, onNew);
-    socket.on(SOCKET_EVENTS.messageEdit, onEdit);
-    socket.on(SOCKET_EVENTS.messageDelete, onDelete);
-    socket.on(SOCKET_EVENTS.reactionAdd, onReaction);
-    socket.on(SOCKET_EVENTS.reactionRemove, onReaction);
-
-    return () => {
-      socket.off(SOCKET_EVENTS.messageNew, onNew);
-      socket.off(SOCKET_EVENTS.messageEdit, onEdit);
-      socket.off(SOCKET_EVENTS.messageDelete, onDelete);
-      socket.off(SOCKET_EVENTS.reactionAdd, onReaction);
-      socket.off(SOCKET_EVENTS.reactionRemove, onReaction);
-    };
-  }, [channel.id, queryClient]);
-
-  const onScroll = async () => {
+  const onScroll = () => {
     const el = scrollRef.current;
     if (!el) return;
     atBottomRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
 
-    if (el.scrollTop < 120 && !loadingMore && !exhausted && messages[0]) {
-      setLoadingMore(true);
-      const previousHeight = el.scrollHeight;
-      const older = await api
-        .get<MessageDto[]>(
-          `/channels/${channel.id}/messages${qs({ before: messages[0].id, limit: 50 })}`,
-        )
-        .catch(() => []);
-      if (older.length < 50) setExhausted(true);
-      if (older.length) {
-        setMessages((prev) => [...older, ...prev]);
-        // Preserve the reader's position rather than jumping to the new top.
-        requestAnimationFrame(() => {
-          el.scrollTop = el.scrollHeight - previousHeight;
-        });
-      }
-      setLoadingMore(false);
+    // Paging widens the same subscription rather than issuing a second fetch, so
+    // messages already on screen stay live.
+    if (el.scrollTop < 120 && messages && messages.length >= limit) {
+      setLimit((n) => n + 50);
     }
   };
 
-  const react = async (message: MessageDto, emoji: string) => {
-    const mine = message.reactions.find((r) => r.emoji === emoji)?.mine;
-    if (mine) await api.del(`/messages/${message.id}/reactions/${encodeURIComponent(emoji)}`);
-    else await api.post(`/messages/${message.id}/reactions`, { emoji });
-    void queryClient.invalidateQueries({ queryKey: ['messages', channel.id] });
-  };
-
-  if (isLoading) {
+  if (messages === undefined) {
     return (
       <div className="flex-1 space-y-4 p-6">
         {Array.from({ length: 7 }, (_, i) => (
@@ -141,6 +109,7 @@ export function MessageList({
   }
 
   const canModerate = spaceRole === 'OWNER' || spaceRole === 'ADMIN' || spaceRole === 'MOD';
+  const exhausted = messages.length < limit;
 
   return (
     <div ref={scrollRef} onScroll={onScroll} className="flex-1 overflow-y-auto px-3 py-4 md:px-5">
@@ -148,9 +117,6 @@ export function MessageList({
         <p className="pb-5 text-center font-mono text-[0.625rem] uppercase tracking-wider text-faint">
           the beginning of #{channel.name}
         </p>
-      )}
-      {loadingMore && (
-        <p className="pb-4 text-center text-xs text-faint">Loading earlier messages…</p>
       )}
 
       {messages.length === 0 ? (
@@ -173,8 +139,7 @@ export function MessageList({
             !newDay &&
             previous &&
             authorKey(previous) === authorKey(message) &&
-            new Date(message.createdAt).getTime() - new Date(previous.createdAt).getTime() <
-              300_000;
+            message.createdAt - previous.createdAt < 300_000;
 
           return (
             <div key={message.id}>
@@ -192,11 +157,9 @@ export function MessageList({
                 grouped={Boolean(grouped)}
                 isMine={message.author.kind === 'user' && message.author.user.id === me?.id}
                 canModerate={canModerate}
-                onReact={react}
+                onReact={(m, emoji) => void toggleReaction({ messageId: m.id, emoji })}
                 onOpenThread={onOpenThread}
-                onDelete={async () => {
-                  await api.del(`/messages/${message.id}`);
-                }}
+                onDelete={() => void removeMessage({ messageId: message.id })}
               />
             </div>
           );
@@ -233,10 +196,9 @@ function MessageRow({
   canModerate: boolean;
   onReact: (message: MessageDto, emoji: string) => void;
   onOpenThread: (message: MessageDto) => void;
-  onDelete: () => Promise<void>;
+  onDelete: () => void;
 }) {
   const [showEmoji, setShowEmoji] = useState(false);
-  const online = usePresence((s) => s.online);
 
   if (message.deletedAt) {
     return (
@@ -270,8 +232,8 @@ function MessageRow({
         <div className="w-9 shrink-0">
           {!grouped ? (
             message.author.kind === 'anonymous' ? (
-              /* An anonymous poster gets a colour derived from their alias, so the thread
-                 stays followable without any identity behind it. */
+              /* An anonymous poster gets a colour derived from their alias, so the
+                 thread stays followable without any identity behind it. */
               <span
                 aria-hidden
                 className="flex h-9 w-9 items-center justify-center rounded-full border border-edge text-sm"
@@ -286,7 +248,6 @@ function MessageRow({
                   src={message.author.user.avatarUrl}
                   seed={message.author.user.id}
                   size={36}
-                  online={online.has(message.author.user.id)}
                 />
               </Link>
             ) : (
@@ -385,7 +346,7 @@ function MessageRow({
         </div>
 
         {/* Hover actions. Keyboard users reach them via focus-within. */}
-        <div className="absolute right-2 top-0 hidden -translate-y-1/2 items-center gap-0.5 rounded-lg border border-edge bg-raised p-0.5 shadow-lg group-hover:flex group-focus-within:flex">
+        <div className="absolute right-2 top-0 hidden -translate-y-1/2 items-center gap-0.5 rounded-lg border border-edge bg-raised p-0.5 shadow-lg group-focus-within:flex group-hover:flex">
           {showEmoji ? (
             QUICK_EMOJI.map((emoji) => (
               <button

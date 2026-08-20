@@ -1,26 +1,21 @@
 import { Link, useParams } from 'react-router-dom';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
 import type { EventDto, PublicUser } from '@campusconnect/shared';
-import { api } from '@/lib/api';
 import { Avatar, Badge, Button, Card, Eyebrow, Skeleton } from '@/components/ui';
 import { IconMapPin } from '@/components/Icons';
+import { api } from '@/lib/convexApi';
+import { useM, useQ } from '@/lib/convexHooks';
 
 type EventDetail = EventDto & { attendees: PublicUser[] };
 
 export function EventPage() {
   const { id } = useParams();
-  const queryClient = useQueryClient();
 
-  const { data: event, isLoading } = useQuery({
-    queryKey: ['event', id],
-    queryFn: () => api.get<EventDetail>(`/events/${id}`),
-    enabled: Boolean(id),
-  });
+  const event = useQ<EventDetail>(api.events.get, id ? { eventId: id } : 'skip');
+  const isLoading = event === undefined;
 
+  const sendRsvp = useM(api.events.rsvp);
   const rsvp = async (status: 'GOING' | 'INTERESTED' | 'DECLINED') => {
-    await api.post(`/events/${id}/rsvp`, { status });
-    void queryClient.invalidateQueries({ queryKey: ['event', id] });
-    void queryClient.invalidateQueries({ queryKey: ['home-feed'] });
+    if (id) await sendRsvp({ eventId: id, status });
   };
 
   if (isLoading || !event) return <Skeleton className="h-96 w-full" />;

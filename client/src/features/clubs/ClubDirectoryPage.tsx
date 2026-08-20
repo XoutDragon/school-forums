@@ -1,11 +1,11 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
 import type { ClubDto } from '@campusconnect/shared';
-import { api, qs } from '@/lib/api';
 import { Avatar, Badge, Button, Card, EmptyState, Input, Skeleton } from '@/components/ui';
 import { FilterChip } from '@/features/courses/CourseListPage';
 import { IconSparkle } from '@/components/Icons';
+import { api } from '@/lib/convexApi';
+import { useM, useQ } from '@/lib/convexHooks';
 
 const CATEGORIES = [
   'ALL',
@@ -25,17 +25,13 @@ export function ClubDirectoryPage() {
   const [recruiting, setRecruiting] = useState(false);
   const [search, setSearch] = useState('');
   const [sort, setSort] = useState<'members' | 'newest'>('members');
-  const queryClient = useQueryClient();
 
-  const { data: clubs, isLoading } = useQuery({
-    queryKey: ['clubs', category, recruiting, search, sort],
-    queryFn: () => api.get<ClubDto[]>(`/clubs${qs({ category, recruiting, q: search, sort })}`),
-  });
+  const clubs = useQ<ClubDto[]>(api.clubs.list, { category, recruiting, search, sort });
+  const isLoading = clubs === undefined;
 
+  const setMembership = useM(api.clubs.setMembership);
   const join = async (club: ClubDto, role: 'MEMBER' | 'FOLLOWER') => {
-    await api.post(`/clubs/${club.id}/membership`, { role });
-    void queryClient.invalidateQueries({ queryKey: ['clubs'] });
-    void queryClient.invalidateQueries({ queryKey: ['spaces'] });
+    await setMembership({ clubId: club.id, role });
   };
 
   return (

@@ -1,8 +1,6 @@
 import { useState } from 'react';
 import { Link, useParams, useSearchParams } from 'react-router-dom';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { PublicUser } from '@campusconnect/shared';
-import { api, qs } from '@/lib/api';
 import { cn, relativeTime } from '@/lib/utils';
 import {
   Avatar,
@@ -16,6 +14,8 @@ import {
   Tabs,
 } from '@/components/ui';
 import { IconCheck, IconWave } from '@/components/Icons';
+import { api } from '@/lib/convexApi';
+import { useM, useQ } from '@/lib/convexHooks';
 
 interface Course {
   id: string;
@@ -43,7 +43,7 @@ interface Review {
   tips: string;
   wouldRecommend: boolean;
   helpfulCount: number;
-  createdAt: string;
+  createdAt: number;
   author: PublicUser | null;
 }
 
@@ -90,11 +90,8 @@ export function CoursePage() {
   const [params, setParams] = useSearchParams();
   const tab = (params.get('tab') as TabId) ?? 'overview';
 
-  const { data: course, isLoading } = useQuery({
-    queryKey: ['course', code],
-    queryFn: () => api.get<Course>(`/courses/${encodeURIComponent(code!)}`),
-    enabled: Boolean(code),
-  });
+  const course = useQ<Course>(api.courses.getByCode, code ? { code } : 'skip');
+  const isLoading = course === undefined;
 
   if (isLoading || !course) {
     return (
@@ -233,12 +230,9 @@ function Gauge({
 
 function Reviews({ course }: { course: Course }) {
   const [writing, setWriting] = useState(false);
-  const queryClient = useQueryClient();
 
-  const { data: reviews, isLoading } = useQuery({
-    queryKey: ['reviews', course.id],
-    queryFn: () => api.get<Review[]>(`/courses/${course.id}/reviews`),
-  });
+  const reviews = useQ<Review[]>(api.courses.reviews, { courseId: course.id });
+  const isLoading = reviews === undefined;
 
   if (isLoading) return <SkeletonRows />;
 
@@ -259,8 +253,6 @@ function Reviews({ course }: { course: Course }) {
           courseId={course.id}
           onDone={() => {
             setWriting(false);
-            void queryClient.invalidateQueries({ queryKey: ['reviews', course.id] });
-            void queryClient.invalidateQueries({ queryKey: ['course', course.code] });
           }}
         />
       )}
@@ -349,11 +341,20 @@ function Stat({ label, value }: { label: string; value: number }) {
 
 function ReviewForm({ courseId, onDone }: { courseId: string; onDone: () => void }) {
   const [error, setError] = useState<string | null>(null);
-  const mutation = useMutation({
-    mutationFn: (body: Record<string, unknown>) => api.post(`/courses/${courseId}/reviews`, body),
-    onSuccess: onDone,
-    onError: (err: Error) => setError(err.message),
-  });
+  const submit = useM(api.courses.writeReview);
+  const [busy, setBusy] = useState(false);
+
+  const mutate = async (body: Record<string, unknown>) => {
+    setBusy(true);
+    try {
+      await submit({ courseId, ...body });
+      onDone();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'That did not save.');
+    } finally {
+      setBusy(false);
+    }
+  };
 
   return (
     <Card>
@@ -362,13 +363,13 @@ function ReviewForm({ courseId, onDone }: { courseId: string; onDone: () => void
         onSubmit={(e) => {
           e.preventDefault();
           const form = new FormData(e.currentTarget);
-          mutation.mutate({
-            term: form.get('term'),
-            profName: form.get('profName'),
+          void mutate({
+            term: String(form.get('term')),
+            profName: String(form.get('profName')),
             difficulty: Number(form.get('difficulty')),
             workload: Number(form.get('workload')),
             rating: Number(form.get('rating')),
-            tips: form.get('tips'),
+            tips: String(form.get('tips')),
             wouldRecommend: form.get('wouldRecommend') === 'on',
             showName: form.get('showName') === 'on',
           });
@@ -442,7 +443,7 @@ function ReviewForm({ courseId, onDone }: { courseId: string; onDone: () => void
 
         {error && <p className="text-sm text-events">{error}</p>}
 
-        <Button type="submit" loading={mutation.isPending}>
+        <Button type="submit" loading={busy}>
           Post review
         </Button>
       </form>
@@ -455,24 +456,23 @@ function ReviewForm({ courseId, onDone }: { courseId: string; onDone: () => void
 function Resources({ course }: { course: Course }) {
   const [sort, setSort] = useState<'top' | 'new'>('top');
   const [preview, setPreview] = useState<Resource | null>(null);
-  const queryClient = useQueryClient();
 
-  const { data: resources, isLoading } = useQuery({
-    queryKey: ['resources', course.id, sort],
-    queryFn: () => api.get<Resource[]>(`/resources${qs({ courseId: course.id, sort })}`),
-  });
+  const resources = useQ<Resource[]>(api.resources.list, { courseId: course.id, sort });
+  const isLoading = resources === undefined;
+
+  const castVote = useM(api.resources.vote);
+  const registerDownload = useM(api.resources.registerDownload);
 
   const vote = async (resource: Resource, value: number) => {
-    await api.post(`/resources/${resource.id}/vote`, {
+    await castVote({
+      resourceId: resource.id,
       value: resource.myVote === value ? 0 : value,
     });
-    void queryClient.invalidateQueries({ queryKey: ['resources', course.id, sort] });
   };
 
   const download = async (resource: Resource) => {
-    const { url } = await api.post<{ url: string }>(`/resources/${resource.id}/download`);
-    window.open(url, '_blank', 'noopener');
-    void queryClient.invalidateQueries({ queryKey: ['resources', course.id, sort] });
+    const { url } = await registerDownload({ resourceId: resource.id });
+    if (url) window.open(url, '_blank', 'noopener');
   };
 
   if (isLoading) return <SkeletonRows />;
@@ -587,10 +587,8 @@ function Resources({ course }: { course: Course }) {
 // ── Q&A ─────────────────────────────────────────────────────────────────────
 
 function Qa({ course }: { course: Course }) {
-  const { data: posts, isLoading } = useQuery({
-    queryKey: ['qa', course.id],
-    queryFn: () => api.get<QaPost[]>(`/qa${qs({ courseId: course.id })}`),
-  });
+  const posts = useQ<QaPost[]>(api.qa.list, { courseId: course.id });
+  const isLoading = posts === undefined;
 
   if (isLoading) return <SkeletonRows />;
 
@@ -645,15 +643,12 @@ function Qa({ course }: { course: Course }) {
 // ── Classmates ──────────────────────────────────────────────────────────────
 
 function Classmates({ course }: { course: Course }) {
-  const queryClient = useQueryClient();
-  const { data: classmates, isLoading } = useQuery({
-    queryKey: ['classmates', course.id],
-    queryFn: () => api.get<Classmate[]>(`/courses/${course.id}/classmates`),
-  });
+  const classmates = useQ<Classmate[]>(api.courses.classmates, { courseId: course.id });
+  const isLoading = classmates === undefined;
 
+  const sendWave = useM(api.users.wave);
   const wave = async (userId: string) => {
-    await api.post(`/users/${userId}/wave`, { context: course.code });
-    void queryClient.invalidateQueries({ queryKey: ['classmates', course.id] });
+    await sendWave({ toId: userId, context: course.code });
   };
 
   if (isLoading) return <SkeletonRows />;

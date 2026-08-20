@@ -1,9 +1,9 @@
 import { Link } from 'react-router-dom';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
 import type { SpaceDto } from '@campusconnect/shared';
-import { api } from '@/lib/api';
 import { Badge, Button, Card, EmptyState, Eyebrow, Skeleton } from '@/components/ui';
 import { IconBook, IconCalendar, IconTag, IconUsers } from '@/components/Icons';
+import { api } from '@/lib/convexApi';
+import { useM, useQ, usePublicQ } from '@/lib/convexHooks';
 
 interface Major {
   id: string;
@@ -46,22 +46,13 @@ const DESTINATIONS = [
 ] as const;
 
 export function ExplorePage() {
-  const queryClient = useQueryClient();
+  const spaces = useQ<SpaceDto[]>(api.spaces.discover);
+  const isLoading = spaces === undefined;
+  const majors = usePublicQ<Major[]>(api.catalog.majors);
 
-  const { data: spaces, isLoading } = useQuery({
-    queryKey: ['discover-spaces'],
-    queryFn: () => api.get<SpaceDto[]>('/spaces/discover'),
-  });
-
-  const { data: majors } = useQuery({
-    queryKey: ['majors'],
-    queryFn: () => api.get<Major[]>('/catalog/majors'),
-  });
-
+  const joinSpace = useM(api.spaces.join);
   const join = async (spaceId: string) => {
-    await api.post(`/spaces/${spaceId}/join`);
-    void queryClient.invalidateQueries({ queryKey: ['discover-spaces'] });
-    void queryClient.invalidateQueries({ queryKey: ['spaces'] });
+    await joinSpace({ spaceId });
   };
 
   return (

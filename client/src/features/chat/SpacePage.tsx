@@ -1,21 +1,11 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
-import type {
-  ChannelDto,
-  MessageDto,
-  PublicUser,
-  SpaceDto,
-  SpaceRole,
-} from '@campusconnect/shared';
-import { SOCKET_EVENTS } from '@campusconnect/shared';
-import { api } from '@/lib/api';
-import { getSocket } from '@/lib/socket';
 import { cn } from '@/lib/utils';
+import { api } from '@/lib/convexApi';
+import { useM, useQ } from '@/lib/convexHooks';
 import { useUi } from '@/stores/ui';
-import { usePresence } from '@/stores/presence';
 import { Avatar, Badge, Skeleton } from '@/components/ui';
-import { MessageList } from '@/features/chat/MessageList';
+import { MessageList, type ChannelDto, type MessageDto } from '@/features/chat/MessageList';
 import { Composer } from '@/features/chat/Composer';
 import { ThreadPanel } from '@/features/chat/ThreadPanel';
 import {
@@ -37,30 +27,40 @@ const CHANNEL_ICON: Record<string, (p: { className?: string }) => JSX.Element> =
   VOICE_STUB: IconSpeaker,
 };
 
+interface PublicUser {
+  id: string;
+  username: string;
+  displayName: string;
+  avatarUrl: string | null;
+  isOnline?: boolean;
+}
+
 interface Member {
-  role: SpaceRole;
+  role: string;
   nickname: string | null;
   user: PublicUser;
+}
+
+interface SpaceDetail {
+  id: string;
+  name: string;
+  slug: string;
+  description: string | null;
+  type: string;
+  memberCount: number;
+  myRole: string | null;
+  channels: ChannelDto[];
 }
 
 export function SpacePage() {
   const { spaceId, channelId } = useParams();
   const navigate = useNavigate();
-  const queryClient = useQueryClient();
   const { memberListOpen, toggleMemberList } = useUi();
   const [threadRoot, setThreadRoot] = useState<MessageDto | null>(null);
 
-  const { data: space, isLoading } = useQuery({
-    queryKey: ['space', spaceId],
-    queryFn: () => api.get<SpaceDto>(`/spaces/${spaceId}`),
-    enabled: Boolean(spaceId),
-  });
-
-  const { data: members } = useQuery({
-    queryKey: ['space-members', spaceId],
-    queryFn: () => api.get<Member[]>(`/spaces/${spaceId}/members`),
-    enabled: Boolean(spaceId),
-  });
+  const space = useQ<SpaceDetail>(api.spaces.get, spaceId ? { spaceId } : 'skip');
+  const members = useQ<Member[]>(api.spaces.members, spaceId ? { spaceId } : 'skip');
+  const markRead = useM(api.messages.markChannelRead);
 
   const channels = space?.channels ?? [];
   const active = useMemo(
@@ -76,20 +76,15 @@ export function SpacePage() {
     }
   }, [space, active, channelId, navigate]);
 
-  // Join the socket room for whichever channel is open, and leave the previous one.
+  // Opening a channel clears its unread badge. There is no socket room to join —
+  // the message query subscribes on its own.
   useEffect(() => {
     if (!active) return;
-    const socket = getSocket();
-    socket.emit(SOCKET_EVENTS.channelJoin, active.id);
     setThreadRoot(null);
-    return () => {
-      socket.emit(SOCKET_EVENTS.channelLeave, active.id);
-      // Unread counts are computed from the read cursor, so refresh them on the way out.
-      void queryClient.invalidateQueries({ queryKey: ['space', spaceId] });
-    };
-  }, [active, spaceId, queryClient]);
+    void markRead({ channelId: active.id });
+  }, [active, markRead]);
 
-  if (isLoading || !space) return <ChatSkeleton />;
+  if (space === undefined) return <ChatSkeleton />;
 
   return (
     <div className="flex h-full">
@@ -157,17 +152,17 @@ export function SpacePage() {
               <>
                 <MessageList
                   channel={active}
-                  spaceRole={space.myRole ?? null}
+                  spaceRole={space.myRole}
                   onOpenThread={setThreadRoot}
                 />
-                <Composer channel={active} spaceRole={space.myRole ?? null} />
+                <Composer channel={active} spaceRole={space.myRole} />
               </>
             )}
           </>
         )}
       </section>
 
-      {/* ── Thread panel (replaces the member list when open) ──────────────── */}
+      {/* ── Thread panel replaces the member list when open ────────────────── */}
       {threadRoot ? (
         <ThreadPanel root={threadRoot} channel={active!} onClose={() => setThreadRoot(null)} />
       ) : (
@@ -219,8 +214,6 @@ function ChannelRow({
 }
 
 function MemberList({ members }: { members?: Member[] }) {
-  const online = usePresence((s) => s.online);
-
   if (!members) {
     return (
       <aside className="hidden w-60 shrink-0 space-y-2 border-l border-edge bg-panel p-3 lg:block">
@@ -233,11 +226,11 @@ function MemberList({ members }: { members?: Member[] }) {
 
   // Online first — the list answers "who could reply right now", not "who exists".
   const sorted = [...members].sort((a, b) => {
-    const aOn = online.has(a.user.id) ? 0 : 1;
-    const bOn = online.has(b.user.id) ? 0 : 1;
+    const aOn = a.user.isOnline ? 0 : 1;
+    const bOn = b.user.isOnline ? 0 : 1;
     return aOn - bOn || a.user.displayName.localeCompare(b.user.displayName);
   });
-  const onlineCount = sorted.filter((m) => online.has(m.user.id)).length;
+  const onlineCount = sorted.filter((m) => m.user.isOnline).length;
 
   return (
     <aside className="hidden w-60 shrink-0 flex-col border-l border-edge bg-panel lg:flex">
@@ -256,13 +249,13 @@ function MemberList({ members }: { members?: Member[] }) {
               src={member.user.avatarUrl}
               seed={member.user.id}
               size={26}
-              online={online.has(member.user.id)}
+              online={member.user.isOnline}
             />
             <span className="min-w-0 flex-1">
               <span
                 className={cn(
                   'block truncate text-[0.8125rem]',
-                  online.has(member.user.id) ? 'text-chalk' : 'text-dim',
+                  member.user.isOnline ? 'text-chalk' : 'text-dim',
                 )}
               >
                 {member.nickname ?? member.user.displayName}
@@ -280,11 +273,10 @@ function MemberList({ members }: { members?: Member[] }) {
   );
 }
 
-/** §4: voice channels render presence only. The honest version of "not built yet" is a
+/** Voice channels render presence only. The honest version of "not built yet" is a
  *  room that shows who is in it, not a fake call UI. */
 function VoiceStub({ members }: { members: Member[] }) {
-  const online = usePresence((s) => s.online);
-  const present = members.filter((m) => online.has(m.user.id)).slice(0, 8);
+  const present = members.filter((m) => m.user.isOnline).slice(0, 8);
 
   return (
     <div className="flex flex-1 flex-col items-center justify-center gap-5 p-8 text-center">

@@ -1,12 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
 import type { NotificationDto } from '@campusconnect/shared';
-import { SOCKET_EVENTS } from '@campusconnect/shared';
-import { api } from '@/lib/api';
-import { getSocket } from '@/lib/socket';
 import { cn, relativeTime } from '@/lib/utils';
 import { IconBell } from '@/components/Icons';
+import { api } from '@/lib/convexApi';
+import { useM, useQ } from '@/lib/convexHooks';
 
 interface Feed {
   items: NotificationDto[];
@@ -60,22 +58,14 @@ function describe(n: NotificationDto): { text: string; href: string } {
 export function NotificationBell() {
   const [open, setOpen] = useState(false);
   const panelRef = useRef<HTMLDivElement>(null);
-  const queryClient = useQueryClient();
   const navigate = useNavigate();
 
-  const { data } = useQuery({
-    queryKey: ['notifications'],
-    queryFn: () => api.get<Feed>('/notifications'),
-  });
+  const data = useQ<Feed>(api.notifications.list);
+  const markOneRead = useM(api.notifications.markRead);
+  const markAll = useM(api.notifications.markAllRead);
 
-  useEffect(() => {
-    const socket = getSocket();
-    const onPush = () => void queryClient.invalidateQueries({ queryKey: ['notifications'] });
-    socket.on(SOCKET_EVENTS.notificationPush, onPush);
-    return () => {
-      socket.off(SOCKET_EVENTS.notificationPush, onPush);
-    };
-  }, [queryClient]);
+  // No socket listener: api.notifications.list is a subscription, so an insert on
+  // the server re-runs it here and the badge updates itself.
 
   useEffect(() => {
     if (!open) return;
@@ -94,8 +84,7 @@ export function NotificationBell() {
   const unread = data?.unread ?? 0;
 
   const markAllRead = async () => {
-    await api.post('/notifications/read-all');
-    void queryClient.invalidateQueries({ queryKey: ['notifications'] });
+    await markAll({});
   };
 
   return (
@@ -139,8 +128,7 @@ export function NotificationBell() {
                   <button
                     key={n.id}
                     onClick={() => {
-                      void api.post(`/notifications/${n.id}/read`);
-                      void queryClient.invalidateQueries({ queryKey: ['notifications'] });
+                      void markOneRead({ notificationId: n.id });
                       setOpen(false);
                       navigate(href);
                     }}

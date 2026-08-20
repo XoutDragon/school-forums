@@ -1,12 +1,11 @@
 import { useEffect, useRef, useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
-import type { Attachment, ChannelDto, SpaceRole } from '@campusconnect/shared';
-import { SOCKET_EVENTS } from '@campusconnect/shared';
-import { api, ApiRequestError } from '@/lib/api';
-import { getSocket } from '@/lib/socket';
 import { cn } from '@/lib/utils';
+import { api } from '@/lib/convexApi';
+import { useM, usePublicQ } from '@/lib/convexHooks';
+import { useTypingSignal } from '@/hooks/useMe';
 import { Button } from '@/components/ui';
-import { IconClose, IconSend } from '@/components/Icons';
+import { IconSend } from '@/components/Icons';
+import type { ChannelDto } from '@/features/chat/MessageList';
 
 export function Composer({
   channel,
@@ -15,24 +14,20 @@ export function Composer({
   compact,
 }: {
   channel: ChannelDto;
-  spaceRole: SpaceRole | null;
+  spaceRole: string | null;
   threadRootId?: string;
   compact?: boolean;
 }) {
   const [value, setValue] = useState('');
-  const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [flagged, setFlagged] = useState(false);
   const [sending, setSending] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const fileRef = useRef<HTMLInputElement>(null);
   const typingSentAt = useRef(0);
 
-  const { data: filter } = useQuery({
-    queryKey: ['filter-words'],
-    queryFn: () => api.get<{ words: string[] }>('/catalog/filter-words'),
-    staleTime: Infinity,
-  });
+  const send = useM(api.messages.send);
+  const signalTyping = useTypingSignal();
+  const filter = usePublicQ<{ words: string[] }>(api.catalog.filterWords);
 
   const isAnnouncement = channel.type === 'ANNOUNCEMENT';
   const canPost =
@@ -51,22 +46,24 @@ export function Composer({
     setFlagged(false);
     setError(null);
 
+    // Typing is a heartbeat now rather than a socket event; the server expires it
+    // after 6 seconds, so re-signalling every few keystrokes is enough.
     const now = Date.now();
     if (next && now - typingSentAt.current > 2500) {
       typingSentAt.current = now;
-      getSocket().emit(SOCKET_EVENTS.typingStart, channel.id);
+      signalTyping(channel.id);
     }
   };
 
   const softCheck = (text: string) =>
     (filter?.words ?? []).some((word) => new RegExp(`\\b${word}\\b`, 'i').test(text));
 
-  const send = async () => {
+  const submit = async () => {
     const content = value.trim();
-    if (!content && attachments.length === 0) return;
+    if (!content) return;
 
-    // §5.10: the soft filter asks once. Sending again goes through — this is a nudge,
-    // not a gate, and pretending otherwise would just teach people to work around it.
+    // The soft filter asks once. Sending again goes through — this is a nudge, not
+    // a gate, and pretending otherwise would just teach people to work around it.
     if (!flagged && softCheck(content)) {
       setFlagged(true);
       return;
@@ -75,30 +72,21 @@ export function Composer({
     setSending(true);
     setError(null);
     try {
-      await api.post(`/channels/${channel.id}/messages`, {
-        content: content || '(attachment)',
-        attachments,
-        threadRootId: threadRootId ?? null,
+      await send({
+        channelId: channel.id,
+        content,
+        threadRootId,
         isAnonymous: channel.type === 'ANONYMOUS',
       });
       setValue('');
-      setAttachments([]);
       setFlagged(false);
-      getSocket().emit(SOCKET_EVENTS.typingStop, channel.id);
+      signalTyping(null);
     } catch (err) {
-      setError(err instanceof ApiRequestError ? err.message : "That didn't send.");
+      const raw = err instanceof Error ? err.message : '';
+      const match = /(?:BAD_REQUEST|FORBIDDEN|RATE_LIMITED|NOT_FOUND): (.*)/.exec(raw);
+      setError(match?.[1] ?? "That didn't send.");
     } finally {
       setSending(false);
-    }
-  };
-
-  const onFiles = async (files: FileList | null) => {
-    if (!files?.length) return;
-    try {
-      const uploaded = await api.upload([...files]);
-      setAttachments((prev) => [...prev, ...uploaded].slice(0, 5));
-    } catch (err) {
-      setError(err instanceof ApiRequestError ? err.message : "That file didn't upload.");
     }
   };
 
@@ -122,46 +110,7 @@ export function Composer({
         </p>
       )}
 
-      {attachments.length > 0 && (
-        <div className="mb-2 flex flex-wrap gap-1.5">
-          {attachments.map((a) => (
-            <span
-              key={a.url}
-              className="flex items-center gap-1.5 rounded-md border border-edge bg-raised px-2 py-1 text-xs text-chalk"
-            >
-              <span className="max-w-[10rem] truncate">{a.name}</span>
-              <button
-                onClick={() => setAttachments((prev) => prev.filter((x) => x.url !== a.url))}
-                aria-label={`Remove ${a.name}`}
-                className="text-faint hover:text-events"
-              >
-                <IconClose className="h-3 w-3" />
-              </button>
-            </span>
-          ))}
-        </div>
-      )}
-
       <div className="flex items-end gap-2 rounded-xl border border-edge bg-raised px-3 py-2 transition focus-within:border-accent/50">
-        <button
-          onClick={() => fileRef.current?.click()}
-          className="pb-1 text-lg leading-none text-faint transition hover:text-chalk"
-          aria-label="Attach a file"
-        >
-          +
-        </button>
-        <input
-          ref={fileRef}
-          type="file"
-          multiple
-          hidden
-          accept="image/*,application/pdf,text/plain,text/markdown"
-          onChange={(e) => {
-            void onFiles(e.target.files);
-            e.target.value = '';
-          }}
-        />
-
         <textarea
           ref={textareaRef}
           value={value}
@@ -169,10 +118,10 @@ export function Composer({
           onKeyDown={(e) => {
             if (e.key === 'Enter' && !e.shiftKey) {
               e.preventDefault();
-              void send();
+              void submit();
             }
           }}
-          onBlur={() => getSocket().emit(SOCKET_EVENTS.typingStop, channel.id)}
+          onBlur={() => signalTyping(null)}
           rows={1}
           placeholder={
             threadRootId
@@ -185,8 +134,8 @@ export function Composer({
         />
 
         <button
-          onClick={() => void send()}
-          disabled={sending || (!value.trim() && attachments.length === 0)}
+          onClick={() => void submit()}
+          disabled={sending || !value.trim()}
           aria-label="Send message"
           className="pb-0.5 text-accent transition hover:text-accent-lift disabled:text-faint"
         >
@@ -199,7 +148,7 @@ export function Composer({
           <p className="flex-1 text-xs text-chalk">
             That reads sharper than you might mean it. Want to rephrase?
           </p>
-          <Button size="sm" variant="ghost" onClick={() => void send()}>
+          <Button size="sm" variant="ghost" onClick={() => void submit()}>
             Send anyway
           </Button>
         </div>

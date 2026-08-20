@@ -1,16 +1,16 @@
 import { Link } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
 import type { BuddyMatchDto } from '@campusconnect/shared';
-import { api } from '@/lib/api';
 import { cn, relativeTime } from '@/lib/utils';
-import { useAuth } from '@/stores/auth';
 import { Avatar, Badge, Button, Card, Code, EmptyState, Skeleton } from '@/components/ui';
 import { IconChevron, IconSparkle } from '@/components/Icons';
+import { api } from '@/lib/convexApi';
+import { useQ } from '@/lib/convexHooks';
+import { useMe } from '@/hooks/useMe';
 
 interface WeekEvent {
   id: string;
   title: string;
-  startsAt: string;
+  startsAt: number;
   location: string;
   tags: string[];
   goingCount: number;
@@ -21,9 +21,9 @@ interface Feed {
   displayName: string;
   karma: number;
   term: string;
-  weekStart: string;
+  weekStart: number;
   week: {
-    date: string;
+    date: number;
     weekday: string;
     dayOfMonth: number;
     isToday: boolean;
@@ -35,7 +35,7 @@ interface Feed {
   announcements: {
     id: string;
     excerpt: string;
-    createdAt: string;
+    createdAt: number;
     author: { displayName: string; avatarUrl: string | null; id: string } | null;
     channel: { id: string; name: string };
     space: { id: string; name: string };
@@ -59,17 +59,11 @@ interface Feed {
 }
 
 export function HomePage() {
-  const user = useAuth((s) => s.user);
+  const user = useMe();
 
-  const { data, isLoading } = useQuery({
-    queryKey: ['home-feed'],
-    queryFn: () => api.get<Feed>('/home/feed'),
-  });
-
-  const { data: matches } = useQuery({
-    queryKey: ['buddy-matches'],
-    queryFn: () => api.get<BuddyMatchDto[]>('/study/buddy/matches'),
-  });
+  const data = useQ<Feed>(api.home.feed);
+  const isLoading = data === undefined;
+  const matches = useQ<BuddyMatchDto[]>(api.study.matches);
 
   if (isLoading || !data) return <HomeSkeleton />;
 

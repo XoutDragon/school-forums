@@ -1,12 +1,12 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
 import type { PublicUser } from '@campusconnect/shared';
-import { api, qs } from '@/lib/api';
 import { formatPrice, relativeTime } from '@/lib/utils';
-import { useAuth } from '@/stores/auth';
 import { Avatar, Badge, Button, Card, Code, EmptyState, Skeleton } from '@/components/ui';
 import { FilterChip } from '@/features/courses/CourseListPage';
+import { api } from '@/lib/convexApi';
+import { useM, useQ } from '@/lib/convexHooks';
+import { useMe } from '@/hooks/useMe';
 
 interface Listing {
   id: string;
@@ -16,8 +16,8 @@ interface Listing {
   category: string;
   photos: string[];
   status: string;
-  createdAt: string;
-  seller: PublicUser;
+  createdAt: number;
+  seller: PublicUser | null;
   course: { id: string; code: string } | null;
 }
 
@@ -26,24 +26,22 @@ const CATEGORIES = ['ALL', 'TEXTBOOK', 'ELECTRONICS', 'FURNITURE', 'TICKETS', 'O
 export function MarketplacePage() {
   const [category, setCategory] = useState<string>('ALL');
   const navigate = useNavigate();
-  const queryClient = useQueryClient();
-  const me = useAuth((s) => s.user);
+  const me = useMe();
 
-  const { data: listings, isLoading } = useQuery({
-    queryKey: ['listings', category],
-    queryFn: () => api.get<Listing[]>(`/campus/listings${qs({ category })}`),
-  });
+  const listings = useQ<Listing[]>(api.campus.listings, { category });
+  const isLoading = listings === undefined;
+
+  const openDm = useM(api.dms.open);
+  const setStatus = useM(api.campus.setListingStatus);
 
   const messageSeller = async (listing: Listing) => {
-    const { conversationId } = await api.post<{ conversationId: string }>(
-      `/campus/listings/${listing.id}/message`,
-    );
+    if (!listing.seller) return;
+    const conversationId = await openDm({ userIds: [listing.seller.id] });
     navigate(`/dms/${conversationId}`);
   };
 
   const markSold = async (listing: Listing) => {
-    await api.post(`/campus/listings/${listing.id}/status`, { status: 'SOLD' });
-    void queryClient.invalidateQueries({ queryKey: ['listings', category] });
+    await setStatus({ listingId: listing.id, status: 'SOLD' });
   };
 
   return (
