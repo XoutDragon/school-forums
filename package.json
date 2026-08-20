@@ -21,7 +21,10 @@
     "test:server": "npm run test -w server",
     "test:client": "npm run test -w client",
     "lint": "eslint . && prettier --check .",
-    "format": "prettier --write ."
+    "format": "prettier --write .",
+    "convex:dev": "convex dev",
+    "convex:deploy": "convex deploy",
+    "convex:seed": "convex run seed:run"
   },
   "_overridesNote": "vitest pulls its own vite, which npm installs beside the client's copy. Two vites means two sets of incompatible plugin types, so vite is pinned for the whole tree.",
   "overrides": {
@@ -39,5 +42,8 @@
   },
   "engines": {
     "node": ">=20"
+  },
+  "dependencies": {
+    "convex": "^1.44.0"
   }
 }
