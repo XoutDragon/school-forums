@@ -6,6 +6,7 @@ import { useM, useQ } from '@/lib/convexHooks';
 import { useMe } from '@/hooks/useMe';
 import { Avatar, EmptyState, Input, Skeleton } from '@/components/ui';
 import { Markdown } from '@/features/chat/Markdown';
+import { FileUpload, FileUploadButton, type Attachment } from '@/features/chat/FileUpload';
 import { IconSend } from '@/components/Icons';
 
 interface PublicUser {
@@ -30,6 +31,7 @@ interface DirectMessage {
   author: PublicUser | null;
   createdAt: number;
   deletedAt: number | null;
+  attachments?: Attachment[];
 }
 
 interface SearchResult {
@@ -47,6 +49,7 @@ export function DmPage() {
   const [draft, setDraft] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
   const [isSearching, setIsSearching] = useState(false);
+  const [attachments, setAttachments] = useState<Attachment[]>([]);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   const conversations = useQ<Conversation[]>(api.dms.list);
@@ -76,9 +79,15 @@ export function DmPage() {
 
   const send = async () => {
     const content = draft.trim();
-    if (!content || !conversationId) return;
+    if (!content && !attachments.length) return;
+    if (!conversationId) return;
     setDraft('');
-    await sendMessage({ conversationId, content });
+    setAttachments([]);
+    await sendMessage({
+      conversationId,
+      content,
+      attachments: attachments.length ? attachments : undefined,
+    });
   };
 
   const startDm = async (userId: string) => {
@@ -131,12 +140,7 @@ export function DmPage() {
                       onClick={() => void startDm(person.id)}
                       className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left transition hover:bg-raised/60"
                     >
-                      <Avatar
-                        name={person.title}
-                        src={null}
-                        seed={person.id}
-                        size={34}
-                      />
+                      <Avatar name={person.title} src={null} seed={person.id} size={34} />
                       <span className="min-w-0 flex-1">
                         <span className="block truncate text-sm font-medium text-chalk">
                           {person.title}
@@ -161,7 +165,8 @@ export function DmPage() {
                 Array.from({ length: 5 }, (_, i) => <Skeleton key={i} className="mb-1.5 h-14" />)
               ) : !conversations.length ? (
                 <p className="px-3 py-10 text-center text-sm text-dim">
-                  No conversations yet. Waving at someone or connecting with a study buddy starts one.
+                  No conversations yet. Waving at someone or connecting with a study buddy starts
+                  one.
                 </p>
               ) : (
                 conversations.map((c) => (
@@ -251,7 +256,22 @@ export function DmPage() {
                           : 'rounded-bl-sm border border-edge bg-panel text-chalk',
                       )}
                     >
-                      <Markdown content={m.content} />
+                      {m.content && <Markdown content={m.content} />}
+                      {m.attachments?.map((att) => (
+                        <div key={`${att.url}`} className="mt-2">
+                          {att.mimeType.startsWith('image/') ? (
+                            <img src={att.url} alt={att.name} className="max-w-full rounded-lg" />
+                          ) : (
+                            <a
+                              href={att.url}
+                              download={att.name}
+                              className="inline-block text-sm underline"
+                            >
+                              {att.name}
+                            </a>
+                          )}
+                        </div>
+                      ))}
                       <span
                         className={cn(
                           'mt-1 block font-mono text-[0.5625rem]',
@@ -266,8 +286,13 @@ export function DmPage() {
               })}
             </div>
 
-            <div className="border-t border-edge bg-panel p-3">
-              <div className="flex items-end gap-2 rounded-xl border border-edge bg-raised px-3 py-2 focus-within:border-accent/50">
+            <div className="border-t border-edge bg-panel p-3 space-y-2">
+              <div className="flex items-center gap-2 rounded-xl bg-raised px-3 py-2">
+                <FileUploadButton
+                  attachments={attachments}
+                  onAttachmentsChange={setAttachments}
+                  disabled={false}
+                />
                 <textarea
                   value={draft}
                   onChange={(e) => setDraft(e.target.value)}
@@ -279,11 +304,12 @@ export function DmPage() {
                   }}
                   rows={1}
                   placeholder="Write a message"
-                  className="max-h-32 flex-1 resize-none bg-transparent py-1 text-[0.9375rem] text-chalk outline-none placeholder:text-faint"
+                  style={{ border: 'none', outline: 'none', boxShadow: 'none' }}
+                  className="max-h-32 flex-1 resize-none bg-transparent py-1 text-[0.9375rem] text-chalk outline-none focus:outline-none focus-visible:outline-none ring-0 focus:ring-0 border-0 placeholder:text-faint"
                 />
                 <button
                   onClick={() => void send()}
-                  disabled={!draft.trim()}
+                  disabled={!draft.trim() && !attachments.length}
                   aria-label="Send message"
                   className="pb-0.5 text-accent transition hover:text-accent-lift disabled:text-faint"
                 >

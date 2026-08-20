@@ -5,6 +5,7 @@ import { useM, usePublicQ } from '@/lib/convexHooks';
 import { useTypingSignal } from '@/hooks/useMe';
 import { Button } from '@/components/ui';
 import { IconSend } from '@/components/Icons';
+import { FileUploadButton, type Attachment } from '@/features/chat/FileUpload';
 import type { ChannelDto } from '@/features/chat/MessageList';
 
 export function Composer({
@@ -22,6 +23,7 @@ export function Composer({
   const [error, setError] = useState<string | null>(null);
   const [flagged, setFlagged] = useState(false);
   const [sending, setSending] = useState(false);
+  const [attachments, setAttachments] = useState<Attachment[]>([]);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const typingSentAt = useRef(0);
 
@@ -60,7 +62,7 @@ export function Composer({
 
   const submit = async () => {
     const content = value.trim();
-    if (!content) return;
+    if (!content && !attachments.length) return;
 
     // The soft filter asks once. Sending again goes through — this is a nudge, not
     // a gate, and pretending otherwise would just teach people to work around it.
@@ -77,8 +79,10 @@ export function Composer({
         content,
         threadRootId,
         isAnonymous: channel.type === 'ANONYMOUS',
+        attachments: attachments.length ? attachments : undefined,
       });
       setValue('');
+      setAttachments([]);
       setFlagged(false);
       signalTyping(null);
     } catch (err) {
@@ -102,15 +106,23 @@ export function Composer({
 
   return (
     <div
-      className={cn('border-t border-edge bg-panel px-3 py-3 md:px-4', compact && 'px-3 py-2.5')}
+      className={cn(
+        'border-t border-edge bg-panel px-3 py-3 md:px-4 space-y-2',
+        compact && 'px-3 py-2.5',
+      )}
     >
       {channel.type === 'ANONYMOUS' && (
-        <p className="mb-2 flex items-center gap-1.5 font-mono text-[0.625rem] uppercase tracking-wider text-accent-lift">
+        <p className="flex items-center gap-1.5 font-mono text-[0.625rem] uppercase tracking-wider text-accent-lift">
           <span aria-hidden>🎭</span> posting as an animal · 5 an hour
         </p>
       )}
 
-      <div className="flex items-end gap-2 rounded-xl border border-edge bg-raised px-3 py-2 transition focus-within:border-accent/50">
+      <div className="flex items-center gap-2 rounded-xl bg-raised px-3 py-2">
+        <FileUploadButton
+          attachments={attachments}
+          onAttachmentsChange={setAttachments}
+          disabled={false}
+        />
         <textarea
           ref={textareaRef}
           value={value}
@@ -130,12 +142,13 @@ export function Composer({
                 ? 'Say it anonymously…'
                 : `Message #${channel.name}`
           }
-          className="max-h-[200px] flex-1 resize-none bg-transparent py-1 text-[0.9375rem] text-chalk outline-none placeholder:text-faint"
+          style={{ border: 'none', outline: 'none', boxShadow: 'none' }}
+          className="max-h-[200px] flex-1 resize-none bg-transparent py-1 text-[0.9375rem] text-chalk outline-none focus:outline-none focus-visible:outline-none ring-0 focus:ring-0 border-0 placeholder:text-faint"
         />
 
         <button
           onClick={() => void submit()}
-          disabled={sending || !value.trim()}
+          disabled={sending || (!value.trim() && !attachments.length)}
           aria-label="Send message"
           className="pb-0.5 text-accent transition hover:text-accent-lift disabled:text-faint"
         >

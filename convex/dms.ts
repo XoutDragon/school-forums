@@ -213,9 +213,28 @@ export const messages = query({
 });
 
 export const send = mutation({
-  args: { token: v.string(), conversationId: v.id('directConversations'), content: v.string() },
+  args: {
+    token: v.string(),
+    conversationId: v.id('directConversations'),
+    content: v.string(),
+    attachments: v.optional(
+      v.array(
+        v.object({
+          storageId: v.optional(v.id('_storage')),
+          url: v.string(),
+          name: v.string(),
+          mimeType: v.string(),
+          size: v.number(),
+        }),
+      ),
+    ),
+  },
   handler: async (ctx, args) => {
     const user = await requireUser(ctx, args.token);
+
+    if (!args.content.trim() && !(args.attachments ?? []).length) {
+      throw new Error('BAD_REQUEST: Say something');
+    }
 
     const membership = await ctx.db
       .query('directMembers')
@@ -231,7 +250,7 @@ export const send = mutation({
       conversationId: args.conversationId,
       authorId: user._id,
       content: args.content,
-      attachments: [],
+      attachments: args.attachments ?? [],
     });
 
     const now = Date.now();

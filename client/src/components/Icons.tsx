@@ -157,6 +157,14 @@ export const IconPlus = (p: Props) => (
   </Svg>
 );
 
+export const IconImage = (p: Props) => (
+  <Svg {...p}>
+    <rect x="3" y="3" width="18" height="18" rx="2" />
+    <circle cx="8.5" cy="8.5" r="1.5" />
+    <path d="m3 15 6-6 5 5 7-7" />
+  </Svg>
+);
+
 export const IconClose = (p: Props) => (
   <Svg {...p}>
     <path d="m6 6 12 12M18 6 6 18" />
@@ -215,5 +223,20 @@ export const IconMapPin = (p: Props) => (
   <Svg {...p}>
     <path d="M12 21s7-5.6 7-11a7 7 0 1 0-14 0c0 5.4 7 11 7 11z" />
     <circle cx="12" cy="10" r="2.6" />
+  </Svg>
+);
+
+export const IconSpinner = (p: Props) => (
+  <Svg {...p} className={p.className ?? `${base} animate-spin`}>
+    <circle cx="12" cy="12" r="9" fill="none" strokeDasharray="56" strokeDashoffset="0" />
+    <circle
+      cx="12"
+      cy="12"
+      r="9"
+      fill="none"
+      strokeDasharray="14"
+      strokeDashoffset="0"
+      opacity="0.4"
+    />
   </Svg>
 );
