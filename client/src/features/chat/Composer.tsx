@@ -4,8 +4,8 @@ import { api } from '@/lib/convexApi';
 import { useM, usePublicQ } from '@/lib/convexHooks';
 import { useTypingSignal } from '@/hooks/useMe';
 import { Button } from '@/components/ui';
-import { IconSend } from '@/components/Icons';
-import { FileUpload, type Attachment } from '@/features/chat/FileUpload';
+import { IconSend, IconClose } from '@/components/Icons';
+import { FileUploadButton, type Attachment } from '@/features/chat/FileUpload';
 import type { ChannelDto } from '@/features/chat/MessageList';
 
 export function Composer({
@@ -121,43 +121,74 @@ export function Composer({
       )}
 
       <div className="space-y-2">
-        <FileUpload
-          attachments={attachments}
-          onAttachmentsChange={setAttachments}
-          disabled={false}
-        />
-        <div className="flex items-center gap-2 rounded-xl bg-raised px-3 py-2">
-        <textarea
-          ref={textareaRef}
-          value={value}
-          onChange={(e) => onChange(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter' && !e.shiftKey) {
-              e.preventDefault();
-              void submit();
-            }
-          }}
-          onBlur={() => signalTyping(null)}
-          rows={1}
-          placeholder={
-            threadRootId
-              ? 'Reply in thread…'
-              : channel.type === 'ANONYMOUS'
-                ? 'Say it anonymously…'
-                : `Message #${channel.name}`
-          }
-          style={{ border: 'none', outline: 'none', boxShadow: 'none' }}
-          className="max-h-[200px] flex-1 resize-none bg-transparent py-1 text-[0.9375rem] text-chalk outline-none focus:outline-none focus-visible:outline-none ring-0 focus:ring-0 border-0 placeholder:text-faint"
-        />
+        {attachments.length > 0 && (
+          <>
+            {/* Image previews grid */}
+            <div className="flex flex-wrap gap-2">
+              {attachments.map((attachment, index) =>
+                attachment.mimeType.startsWith('image/') && attachment.url ? (
+                  <div key={index} className="relative inline-block">
+                    <img
+                      src={attachment.url}
+                      alt={attachment.name}
+                      className="max-h-32 rounded-lg border border-edge object-cover"
+                    />
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setAttachments(
+                          attachments.filter((_: Attachment, i: number) => i !== index),
+                        )
+                      }
+                      className="absolute right-1 top-1 rounded-full bg-black/50 p-1 text-white transition hover:bg-black/70"
+                      aria-label={`Remove ${attachment.name}`}
+                    >
+                      <IconClose className="h-4 w-4" />
+                    </button>
+                  </div>
+                ) : null,
+              )}
+            </div>
+          </>
+        )}
 
-        <button
-          onClick={() => void submit()}
-          disabled={sending || (!value.trim() && !attachments.length)}
-          aria-label="Send message"
-          className="pb-0.5 text-accent transition hover:text-accent-lift disabled:text-faint"
-        >
-          <IconSend />
-        </button>
+        <div className="flex items-center gap-2 rounded-xl bg-raised px-3 py-2">
+          <FileUploadButton
+            attachments={attachments}
+            onAttachmentsChange={setAttachments}
+            disabled={false}
+          />
+          <textarea
+            ref={textareaRef}
+            value={value}
+            onChange={(e) => onChange(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                void submit();
+              }
+            }}
+            onBlur={() => signalTyping(null)}
+            rows={1}
+            placeholder={
+              threadRootId
+                ? 'Reply in thread…'
+                : channel.type === 'ANONYMOUS'
+                  ? 'Say it anonymously…'
+                  : `Message #${channel.name}`
+            }
+            style={{ border: 'none', outline: 'none', boxShadow: 'none' }}
+            className="max-h-[200px] flex-1 resize-none bg-transparent py-1 text-[0.9375rem] text-chalk outline-none focus:outline-none focus-visible:outline-none ring-0 focus:ring-0 border-0 placeholder:text-faint"
+          />
+
+          <button
+            onClick={() => void submit()}
+            disabled={sending || (!value.trim() && !attachments.length)}
+            aria-label="Send message"
+            className="pb-0.5 text-accent transition hover:text-accent-lift disabled:text-faint"
+          >
+            <IconSend />
+          </button>
         </div>
       </div>
 

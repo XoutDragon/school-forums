@@ -296,3 +296,17 @@ export const markRead = mutation({
     return null;
   },
 });
+
+export const deleteMessage = mutation({
+  args: { token: v.string(), messageId: v.id('directMessages') },
+  handler: async (ctx, args) => {
+    const user = await requireUser(ctx, args.token);
+    const message = await ctx.db.get(args.messageId);
+    if (!message) throw new Error('NOT_FOUND: No message there');
+    if (message.authorId !== user._id) {
+      throw new Error('FORBIDDEN: You can only delete your own messages');
+    }
+    await ctx.db.patch(args.messageId, { deletedAt: Date.now(), content: '' });
+    return null;
+  },
+});

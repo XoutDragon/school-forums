@@ -6,8 +6,8 @@ import { useM, useQ } from '@/lib/convexHooks';
 import { useMe } from '@/hooks/useMe';
 import { Avatar, EmptyState, Input, Skeleton } from '@/components/ui';
 import { Markdown } from '@/features/chat/Markdown';
-import { FileUpload, type Attachment } from '@/features/chat/FileUpload';
-import { IconSend } from '@/components/Icons';
+import { FileUploadButton, type Attachment } from '@/features/chat/FileUpload';
+import { IconSend, IconClose } from '@/components/Icons';
 
 interface PublicUser {
   id: string;
@@ -65,6 +65,7 @@ export function DmPage() {
   const sendMessage = useM(api.dms.send);
   const markRead = useM(api.dms.markRead);
   const openDm = useM(api.dms.open);
+  const deleteMessage = useM(api.dms.deleteMessage);
 
   const active = conversations?.find((c) => c.id === conversationId);
 
@@ -238,8 +239,17 @@ export function DmPage() {
             <div ref={scrollRef} className="flex-1 space-y-2 overflow-y-auto p-4">
               {messages?.map((m) => {
                 const mine = m.author?.id === me?.id;
+
+                if (m.deletedAt) {
+                  return (
+                    <div key={m.id} className="group py-1 pl-12 text-xs italic text-faint">
+                      This message was deleted.
+                    </div>
+                  );
+                }
+
                 return (
-                  <div key={m.id} className={cn('flex gap-2.5', mine && 'flex-row-reverse')}>
+                  <div key={m.id} className={cn('group relative flex gap-2.5', mine && 'flex-row-reverse')}>
                     {!mine && m.author && (
                       <Avatar
                         name={m.author.displayName}
@@ -281,18 +291,61 @@ export function DmPage() {
                         {timeOfDay(m.createdAt)}
                       </span>
                     </div>
+
+                    {mine && (
+                      <div className="absolute right-0 top-0 hidden -translate-y-1/2 items-center gap-0.5 rounded-lg border border-edge bg-raised p-0.5 shadow-lg group-hover:flex">
+                        <button
+                          onClick={() => void deleteMessage({ messageId: m.id })}
+                          className="rounded px-1.5 py-1 text-xs hover:bg-panel"
+                          aria-label="Delete message"
+                        >
+                          🗑
+                        </button>
+                      </div>
+                    )}
                   </div>
                 );
               })}
             </div>
 
             <div className="border-t border-edge bg-panel p-3 space-y-2">
-              <FileUpload
-                attachments={attachments}
-                onAttachmentsChange={setAttachments}
-                disabled={false}
-              />
+              {attachments.length > 0 && (
+                <>
+                  {/* Image previews grid */}
+                  <div className="flex flex-wrap gap-2">
+                    {attachments.map((attachment, index) =>
+                      attachment.mimeType.startsWith('image/') && attachment.url ? (
+                        <div key={index} className="relative inline-block">
+                          <img
+                            src={attachment.url}
+                            alt={attachment.name}
+                            className="max-h-32 rounded-lg border border-edge object-cover"
+                          />
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setAttachments(
+                                attachments.filter((_: Attachment, i: number) => i !== index),
+                              )
+                            }
+                            className="absolute right-1 top-1 rounded-full bg-black/50 p-1 text-white transition hover:bg-black/70"
+                            aria-label={`Remove ${attachment.name}`}
+                          >
+                            <IconClose className="h-4 w-4" />
+                          </button>
+                        </div>
+                      ) : null,
+                    )}
+                  </div>
+                </>
+              )}
+
               <div className="flex items-center gap-2 rounded-xl bg-raised px-3 py-2">
+                <FileUploadButton
+                  attachments={attachments}
+                  onAttachmentsChange={setAttachments}
+                  disabled={false}
+                />
                 <textarea
                   value={draft}
                   onChange={(e) => setDraft(e.target.value)}
