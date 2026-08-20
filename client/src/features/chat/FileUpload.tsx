@@ -1,5 +1,7 @@
 import { useRef, useState } from 'react';
 import { IconImage, IconClose, IconSpinner } from '@/components/Icons';
+import { api } from '@/lib/convexApi';
+import { useM } from '@/lib/convexHooks';
 
 export interface Attachment {
   storageId?: string;
@@ -17,12 +19,15 @@ export interface FileUploadProps {
 
 export function FileUploadButton({ onAttachmentsChange, attachments, disabled }: FileUploadProps) {
   const [uploading, setUploading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const generateUploadUrl = useM(api.resources.generateUploadUrl);
 
   const handleFileSelect = async (files: FileList | null) => {
     if (!files || files.length === 0) return;
 
     setUploading(true);
+    setError(null);
     try {
       const newAttachments: Attachment[] = [];
 
@@ -30,27 +35,56 @@ export function FileUploadButton({ onAttachmentsChange, attachments, disabled }:
         const file = files.item(i);
         if (!file) continue;
 
-        // For now, create a data URL for preview
-        // In production, you'd upload to Convex storage and get a storage ID
-        const reader = new FileReader();
+        console.log(`Uploading file: ${file.name} (${file.size} bytes)`);
 
-        await new Promise<void>((resolve) => {
-          reader.onload = () => {
-            const dataUrl = reader.result as string;
-            newAttachments.push({
-              url: dataUrl,
-              name: file.name,
-              mimeType: file.type,
-              size: file.size,
-            });
-            resolve();
-          };
-          reader.readAsDataURL(file);
+        // Step 0: Generate preview for images
+        let previewUrl = '';
+        if (file.type.startsWith('image/')) {
+          previewUrl = await new Promise<string>((resolve) => {
+            const reader = new FileReader();
+            reader.onload = () => {
+              resolve(reader.result as string);
+            };
+            reader.readAsDataURL(file);
+          });
+        }
+
+        // Step 1: Get upload URL from Convex
+        const uploadUrl = await generateUploadUrl({});
+        console.log('Got upload URL:', uploadUrl);
+
+        // Step 2: Upload file to Convex storage
+        const uploadResponse = await fetch(uploadUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': file.type },
+          body: file,
+        });
+
+        console.log('Upload response status:', uploadResponse.status);
+
+        if (!uploadResponse.ok) {
+          throw new Error(`Upload failed: ${uploadResponse.statusText}`);
+        }
+
+        const responseData = await uploadResponse.json() as { storageId: string };
+        const storageId = responseData.storageId;
+        console.log('Got storage ID:', storageId);
+
+        newAttachments.push({
+          storageId,
+          url: previewUrl || '', // Use preview URL for images, empty string otherwise
+          name: file.name,
+          mimeType: file.type,
+          size: file.size,
         });
       }
 
       onAttachmentsChange([...attachments, ...newAttachments]);
       if (inputRef.current) inputRef.current.value = '';
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error('File upload error:', msg);
+      setError(msg);
     } finally {
       setUploading(false);
     }
@@ -78,11 +112,12 @@ export function FileUploadButton({ onAttachmentsChange, attachments, disabled }:
           disabled={disabled || uploading}
           className="flex items-center justify-center text-dim transition hover:text-chalk disabled:opacity-50"
           aria-label="Attach image"
+          title={error ? `Upload error: ${error}` : 'Attach image'}
         >
           <IconImage className="h-5 w-5 shrink-0" />
         </button>
       )}
-
+      {error && <span className="text-xs text-events">{error}</span>}
     </>
   );
 }
@@ -91,37 +126,57 @@ export function FileUpload({ onAttachmentsChange, attachments, disabled }: FileU
   return (
     <>
       {attachments.length > 0 && (
-        <div className="rounded-lg border border-edge bg-raised/50 p-2">
-          <div className="space-y-1">
-            {attachments.map((attachment, index) => (
-              <div
-                key={index}
-                className="flex items-center justify-between gap-2 rounded px-2 py-1.5"
-              >
-                <div className="min-w-0 flex-1">
-                  {attachment.mimeType.startsWith('image/') && attachment.url.startsWith('data:') ? (
+        <div className="space-y-2">
+          {/* Image previews grid */}
+          <div className="flex flex-wrap gap-2">
+            {attachments.map((attachment, index) =>
+              attachment.mimeType.startsWith('image/') && attachment.url ? (
+                <div key={index} className="relative inline-block">
+                  <img
+                    src={attachment.url}
+                    alt={attachment.name}
+                    className="max-h-32 rounded-lg border border-edge object-cover"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => onAttachmentsChange(attachments.filter((_: Attachment, i: number) => i !== index))}
+                    className="absolute right-1 top-1 rounded-full bg-black/50 p-1 text-white transition hover:bg-black/70"
+                    aria-label={`Remove ${attachment.name}`}
+                  >
+                    <IconClose className="h-4 w-4" />
+                  </button>
+                </div>
+              ) : null,
+            )}
+          </div>
+
+          {/* File list */}
+          <div className="rounded-lg border border-edge bg-raised/50 p-2">
+            <div className="space-y-1">
+              {attachments.map((attachment, index) => (
+                <div
+                  key={index}
+                  className="flex items-center justify-between gap-2 rounded px-2 py-1.5"
+                >
+                  <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2">
-                      <img
-                        src={attachment.url}
-                        alt={attachment.name}
-                        className="h-8 w-8 rounded object-cover"
-                      />
+                      {attachment.mimeType.startsWith('image/') && (
+                        <span className="shrink-0 text-sm">🖼️</span>
+                      )}
                       <span className="truncate text-xs text-chalk">{attachment.name}</span>
                     </div>
-                  ) : (
-                    <span className="text-xs text-chalk">{attachment.name}</span>
-                  )}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => onAttachmentsChange(attachments.filter((_: Attachment, i: number) => i !== index))}
+                    className="flex-shrink-0 text-faint transition hover:text-dim"
+                    aria-label={`Remove ${attachment.name}`}
+                  >
+                    <IconClose className="h-4 w-4" />
+                  </button>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => onAttachmentsChange(attachments.filter((_: Attachment, i: number) => i !== index))}
-                  className="flex-shrink-0 text-faint transition hover:text-dim"
-                  aria-label={`Remove ${attachment.name}`}
-                >
-                  <IconClose className="h-4 w-4" />
-                </button>
-              </div>
-            ))}
+              ))}
+            </div>
           </div>
         </div>
       )}

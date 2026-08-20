@@ -77,6 +77,27 @@ async function hydrate(
         }
       }
 
+      // Fetch download URLs for attachments with storageIds
+      const attachments = await Promise.all(
+        message.attachments.map(async (att) => {
+          console.log('Processing attachment:', { storageId: att.storageId, currentUrl: att.url });
+          let url = att.url;
+          if (att.storageId) {
+            try {
+              const storageUrl = await ctx.storage.getUrl(att.storageId);
+              console.log('Got storage URL:', storageUrl);
+              url = storageUrl || att.url;
+            } catch (e) {
+              console.error('Error getting storage URL:', e);
+            }
+          }
+          return {
+            ...att,
+            url,
+          };
+        }),
+      );
+
       return toMessageDto(message, {
         viewerId,
         author,
@@ -86,6 +107,7 @@ async function hydrate(
         replyTo,
         threadReplyCount: threadReplies.length,
         isPinned: Boolean(pin),
+        attachments,
       });
     }),
   );
@@ -189,6 +211,10 @@ export const send = mutation({
 
     await consumeRateLimit(ctx, 'messages', user._id);
     if (isAnonymous) await consumeRateLimit(ctx, 'anonymousPosts', user._id);
+
+    if (args.attachments && args.attachments.length > 0) {
+      console.log('Storing message with attachments:', JSON.stringify(args.attachments, null, 2));
+    }
 
     const messageId = await ctx.db.insert('messages', {
       channelId: args.channelId,

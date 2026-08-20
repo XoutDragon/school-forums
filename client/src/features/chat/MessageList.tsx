@@ -289,13 +289,16 @@ function MessageRow({
 
           {message.attachments.length > 0 && (
             <div className="mt-2 flex flex-wrap gap-2">
-              {message.attachments.map((a) =>
-                a.mimeType.startsWith('image/') ? (
+              {console.log('Rendering attachments for message:', message.id, message.attachments)}
+              {message.attachments.map((a) => {
+                console.log('Rendering attachment:', { url: a.url, name: a.name, mimeType: a.mimeType });
+                return a.mimeType.startsWith('image/') ? (
                   <a key={a.url} href={a.url} target="_blank" rel="noreferrer">
                     <img
                       src={a.url}
                       alt={a.name}
                       className="max-h-64 rounded-lg border border-edge object-cover"
+                      onError={() => console.error('Failed to load image:', a.url)}
                     />
                   </a>
                 ) : (
@@ -309,8 +312,8 @@ function MessageRow({
                     <span className="font-mono text-[0.625rem] uppercase text-faint">file</span>
                     {a.name}
                   </a>
-                ),
-              )}
+                );
+              })}
             </div>
           )}
 

@@ -122,9 +122,9 @@ export const LIMITS = {
     message: 'Anonymous posting is capped at 5 an hour. Try again later.',
   },
   uploads: {
-    limit: 10,
+    limit: 100,
     windowMs: 24 * 60 * 60_000,
-    message: "You've hit today's upload limit of 10 files.",
+    message: "You've hit today's upload limit of 100 files.",
   },
   reports: {
     limit: 3,

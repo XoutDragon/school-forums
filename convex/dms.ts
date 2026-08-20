@@ -198,10 +198,32 @@ export const messages = query({
       rows.reverse().map(async (message) => {
         const author = await ctx.db.get(message.authorId);
         const major = author?.majorId ? await ctx.db.get(author.majorId) : null;
+
+        // Fetch download URLs for attachments with storageIds
+        const attachments = await Promise.all(
+          message.attachments.map(async (att) => {
+            console.log('DM: Processing attachment:', { storageId: att.storageId, currentUrl: att.url });
+            let url = att.url;
+            if (att.storageId) {
+              try {
+                const storageUrl = await ctx.storage.getUrl(att.storageId);
+                console.log('DM: Got storage URL:', storageUrl);
+                url = storageUrl || att.url;
+              } catch (e) {
+                console.error('DM: Error getting storage URL:', e);
+              }
+            }
+            return {
+              ...att,
+              url,
+            };
+          }),
+        );
+
         return {
           id: message._id,
           content: message.deletedAt ? '' : message.content,
-          attachments: message.attachments,
+          attachments,
           author: author ? toPublicUser(author, major) : null,
           createdAt: message._creationTime,
           editedAt: message.editedAt ?? null,

@@ -92,6 +92,7 @@ export interface SerializeMessageContext {
   replyTo?: { message: Doc<'messages'>; author: Doc<'users'> | null } | null;
   threadReplyCount?: number;
   isPinned?: boolean;
+  attachments?: Doc<'messages'>['attachments'];
 }
 
 export function toMessageDto(message: Doc<'messages'>, ctx: SerializeMessageContext): MessageDto {
@@ -126,7 +127,7 @@ export function toMessageDto(message: Doc<'messages'>, ctx: SerializeMessageCont
     channelId: message.channelId,
     content: message.deletedAt ? '' : message.content,
     author,
-    attachments: message.deletedAt ? [] : message.attachments,
+    attachments: message.deletedAt ? [] : (ctx.attachments ?? message.attachments),
     replyToId: message.replyToId ?? null,
     replyTo: ctx.replyTo
       ? {

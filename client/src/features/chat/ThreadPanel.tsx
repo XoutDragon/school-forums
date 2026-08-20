@@ -111,6 +111,32 @@ function ThreadMessage({ message }: { message: MessageDto }) {
         </div>
         <div className="text-sm leading-relaxed text-chalk/95">
           <Markdown content={message.content} />
+          {message.attachments.length > 0 && (
+            <div className="mt-2 flex flex-wrap gap-2">
+              {message.attachments.map((a) =>
+                a.mimeType.startsWith('image/') ? (
+                  <a key={a.url} href={a.url} target="_blank" rel="noreferrer">
+                    <img
+                      src={a.url}
+                      alt={a.name}
+                      className="max-h-48 rounded-lg border border-edge object-cover"
+                    />
+                  </a>
+                ) : (
+                  <a
+                    key={a.url}
+                    href={a.url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="flex items-center gap-2 rounded-lg border border-edge bg-raised px-3 py-2 text-xs text-chalk hover:border-accent/50"
+                  >
+                    <span className="font-mono text-[0.625rem] uppercase text-faint">file</span>
+                    {a.name}
+                  </a>
+                ),
+              )}
+            </div>
+          )}
         </div>
       </div>
     </article>

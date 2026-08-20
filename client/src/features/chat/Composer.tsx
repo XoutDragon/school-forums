@@ -5,7 +5,7 @@ import { useM, usePublicQ } from '@/lib/convexHooks';
 import { useTypingSignal } from '@/hooks/useMe';
 import { Button } from '@/components/ui';
 import { IconSend } from '@/components/Icons';
-import { FileUploadButton, type Attachment } from '@/features/chat/FileUpload';
+import { FileUpload, type Attachment } from '@/features/chat/FileUpload';
 import type { ChannelDto } from '@/features/chat/MessageList';
 
 export function Composer({
@@ -74,6 +74,7 @@ export function Composer({
     setSending(true);
     setError(null);
     try {
+      console.log('Sending message with attachments:', attachments);
       await send({
         channelId: channel.id,
         content,
@@ -81,6 +82,7 @@ export function Composer({
         isAnonymous: channel.type === 'ANONYMOUS',
         attachments: attachments.length ? attachments : undefined,
       });
+      console.log('Message sent successfully');
       setValue('');
       setAttachments([]);
       setFlagged(false);
@@ -89,6 +91,7 @@ export function Composer({
       const raw = err instanceof Error ? err.message : '';
       const match = /(?:BAD_REQUEST|FORBIDDEN|RATE_LIMITED|NOT_FOUND): (.*)/.exec(raw);
       setError(match?.[1] ?? "That didn't send.");
+      console.error('Send error:', raw);
     } finally {
       setSending(false);
     }
@@ -117,12 +120,13 @@ export function Composer({
         </p>
       )}
 
-      <div className="flex items-center gap-2 rounded-xl bg-raised px-3 py-2">
-        <FileUploadButton
+      <div className="space-y-2">
+        <FileUpload
           attachments={attachments}
           onAttachmentsChange={setAttachments}
           disabled={false}
         />
+        <div className="flex items-center gap-2 rounded-xl bg-raised px-3 py-2">
         <textarea
           ref={textareaRef}
           value={value}
@@ -154,6 +158,7 @@ export function Composer({
         >
           <IconSend />
         </button>
+        </div>
       </div>
 
       {flagged && (
