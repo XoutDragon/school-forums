@@ -6,7 +6,7 @@ import { useM, useQ } from '@/lib/convexHooks';
 import { useMe } from '@/hooks/useMe';
 import { Avatar, EmptyState, Input, Skeleton } from '@/components/ui';
 import { Markdown } from '@/features/chat/Markdown';
-import { FileUpload, FileUploadButton, type Attachment } from '@/features/chat/FileUpload';
+import { FileUpload, type Attachment } from '@/features/chat/FileUpload';
 import { IconSend } from '@/components/Icons';
 
 interface PublicUser {
@@ -287,12 +287,12 @@ export function DmPage() {
             </div>
 
             <div className="border-t border-edge bg-panel p-3 space-y-2">
+              <FileUpload
+                attachments={attachments}
+                onAttachmentsChange={setAttachments}
+                disabled={false}
+              />
               <div className="flex items-center gap-2 rounded-xl bg-raised px-3 py-2">
-                <FileUploadButton
-                  attachments={attachments}
-                  onAttachmentsChange={setAttachments}
-                  disabled={false}
-                />
                 <textarea
                   value={draft}
                   onChange={(e) => setDraft(e.target.value)}
