@@ -60,6 +60,48 @@ server/   Express API, Socket.IO, Prisma, seed script
 client/   React SPA
 ```
 
+## Convex backend (in progress)
+
+The Express/Prisma/SQLite backend under `server/` is complete and is what the app
+currently runs on. A port to Convex is underway in `convex/`.
+
+**Status:** schema covers all 40 models; auth, spaces/channels and messages are
+ported. Courses, clubs, events, study groups, marketplace, moderation, search,
+notifications and the seed are not yet — they still only exist in `server/`.
+
+### Setting it up
+
+```bash
+cp .env.local.example .env.local
+npx convex dev
+```
+
+`npx convex dev` prompts for a browser login, generates `convex/_generated/`, and
+pushes the schema and functions to the deployment. Leave it running; it redeploys
+on save.
+
+`convex/_generated/` is gitignored — it is produced from the schema, so it is
+created locally rather than committed.
+
+The functions have not been typechecked against the generated types yet (those
+types do not exist until the command above runs), so expect the first run to
+report some type errors.
+
+### Things that changed in the port
+
+- **bcrypt → PBKDF2-SHA512** via Web Crypto. bcrypt is a native module and cannot
+  run in Convex's V8 isolate. Password hashes from the SQLite database will not
+  verify against this; migrated accounts need a reset.
+- **httpOnly cookie → session token in localStorage.** Convex has no cookie jar.
+  This is a real downgrade — an XSS becomes account takeover where it previously
+  could not. The fix is Convex Auth or Clerk rather than anything hand-rolled.
+  See the note in `convex/lib/auth.ts`.
+- **Socket.IO removed.** Convex queries are reactive, so `messages.list` re-runs
+  on every subscriber when the table changes. The socket server, its five event
+  handlers and the client-side reducer are all gone.
+- **Rate limits, presence and sessions became tables.** All three lived in process
+  memory on Express; Convex has no long-lived process to hold them.
+
 ## Notes
 
 - **Local-only by design.** No Docker, Redis, Postgres, S3, or external APIs.
