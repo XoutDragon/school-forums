@@ -66,18 +66,33 @@ export const createListing = mutation({
       v.literal('OTHER'),
     ),
     courseId: v.optional(v.id('courses')),
-    photos: v.optional(v.array(v.string())),
+    /**
+     * Photos are optional (feature 5). The client uploads to Convex storage first
+     * and passes storage ids; the URLs are resolved here and denormalised onto the
+     * listing, so the grid renders from one read instead of one read per photo.
+     */
+    photoStorageIds: v.optional(v.array(v.id('_storage'))),
   },
   handler: async (ctx, args) => {
     const user = await requireUser(ctx, args.token);
+
+    const title = args.title.trim();
+    if (title.length < 3) throw new Error('BAD_REQUEST: Give the listing a title');
+    if (args.priceCents < 0) throw new Error('BAD_REQUEST: A price cannot be negative');
+
+    const ids = (args.photoStorageIds ?? []).slice(0, 4);
+    const photos = (await Promise.all(ids.map((id) => ctx.storage.getUrl(id)))).filter(
+      (url): url is string => url !== null,
+    );
+
     return ctx.db.insert('marketplaceListings', {
       sellerId: user._id,
-      title: args.title,
-      description: args.description,
-      priceCents: args.priceCents,
+      title,
+      description: args.description?.trim() || undefined,
+      priceCents: Math.round(args.priceCents),
       category: args.category,
       courseId: args.courseId,
-      photos: args.photos ?? [],
+      photos,
       status: 'ACTIVE',
     });
   },

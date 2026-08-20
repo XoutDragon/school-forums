@@ -32,12 +32,15 @@ export interface MeUser {
   };
   onboardedAt: number | null;
   isAdmin: boolean;
+  mustChangePassword: boolean;
 }
 
 interface AuthState {
   /** Bumped on sign-in/out so subscribed queries re-read the new token. */
   epoch: number;
-  signIn: (email: string, password: string) => Promise<void>;
+  /** `adminOnly` is the separate administrator door — it refuses non-admin accounts
+   *  rather than quietly signing them in to the student app. */
+  signIn: (email: string, password: string, adminOnly?: boolean) => Promise<void>;
   register: (input: {
     email: string;
     username: string;
@@ -50,8 +53,8 @@ interface AuthState {
 export const useAuth = create<AuthState>((set, get) => ({
   epoch: 0,
 
-  async signIn(email, password) {
-    const result = await convex.mutation(api.auth.login, { email, password });
+  async signIn(email, password, adminOnly = false) {
+    const result = await convex.mutation(api.auth.login, { email, password, adminOnly });
     setSessionToken(result.token);
     set({ epoch: get().epoch + 1 });
   },

@@ -1,74 +1,48 @@
 import { v } from 'convex/values';
 import { mutation, query } from './_generated/server';
+import type { MutationCtx, QueryCtx } from './_generated/server';
 import { requireUser, sessionExpiry, userFromToken } from './lib/auth';
+import { assertPasswordOk, hashPassword, newToken, verifyPassword } from './lib/password';
 import { toPublicUser } from './lib/serialize';
 
 /**
- * Password hashing note.
+ * Authentication.
  *
- * Express used bcrypt. bcrypt is a native module and cannot run inside a Convex
- * query or mutation, which execute in a V8 isolate. The options were a Node action
- * (an extra network hop on every login, and actions cannot write transactionally)
- * or a pure-JS KDF that runs in the isolate. This uses PBKDF2 via Web Crypto,
- * which is available in the isolate and is a legitimate password KDF.
- *
- * Existing bcrypt hashes from the SQLite database will not verify against this.
- * Anyone migrating real accounts has to force a password reset.
+ * Password hashing moved to lib/password.ts so first-run setup and admin-issued
+ * resets share one KDF. Everything else here is the session lifecycle.
  */
 
-const PBKDF2_ITERATIONS = 210_000; // OWASP 2023 guidance for PBKDF2-SHA512
-const SALT_BYTES = 16;
-
-function toHex(buffer: ArrayBuffer): string {
-  return [...new Uint8Array(buffer)].map((b) => b.toString(16).padStart(2, '0')).join('');
-}
-
-async function hashPassword(password: string, saltHex?: string): Promise<string> {
-  const salt = saltHex
-    ? Uint8Array.from(saltHex.match(/.{2}/g)!.map((byte) => parseInt(byte, 16)))
-    : crypto.getRandomValues(new Uint8Array(SALT_BYTES));
-
-  const key = await crypto.subtle.importKey(
-    'raw',
-    new TextEncoder().encode(password),
-    'PBKDF2',
-    false,
-    ['deriveBits'],
-  );
-  const bits = await crypto.subtle.deriveBits(
-    { name: 'PBKDF2', salt, iterations: PBKDF2_ITERATIONS, hash: 'SHA-512' },
-    key,
-    512,
-  );
-
-  const saltOut = saltHex ?? toHex(salt.buffer as ArrayBuffer);
-  return `pbkdf2$${PBKDF2_ITERATIONS}$${saltOut}$${toHex(bits)}`;
-}
-
-async function verifyPassword(password: string, stored: string): Promise<boolean> {
-  const [scheme, , saltHex] = stored.split('$');
-  if (scheme !== 'pbkdf2' || !saltHex) return false;
-  const candidate = await hashPassword(password, saltHex);
-  // Constant-time-ish: compare full strings of equal length rather than bailing early.
-  if (candidate.length !== stored.length) return false;
-  let diff = 0;
-  for (let i = 0; i < candidate.length; i++) {
-    diff |= candidate.charCodeAt(i) ^ stored.charCodeAt(i);
-  }
-  return diff === 0;
-}
-
-function newToken(): string {
-  return toHex(crypto.getRandomValues(new Uint8Array(32)).buffer as ArrayBuffer);
-}
-
 const DEFAULT_SETTINGS = {
-  theme: 'dark' as const,
+  theme: 'light' as const,
   dmPrivacy: 'EVERYONE' as const,
   discoverable: true,
   showCourses: true,
   showRealName: true,
 };
+
+/** The single instanceConfig row, or null before first-run setup. */
+async function loadConfig(ctx: QueryCtx | MutationCtx) {
+  return ctx.db.query('instanceConfig').first();
+}
+
+/**
+ * Email-domain gate.
+ *
+ * The IT administrator lists the domains their institution issues. An empty list
+ * means the instance is open, which is the sane default for a demo but is not what
+ * a real campus would run.
+ */
+export async function assertEmailAllowed(ctx: MutationCtx, email: string): Promise<void> {
+  const config = await loadConfig(ctx);
+  const domains = config?.allowedEmailDomains ?? [];
+  if (!domains.length) return;
+
+  const domain = email.split('@')[1]?.toLowerCase();
+  if (!domain || !domains.includes(domain)) {
+    const list = domains.map((d) => `@${d}`).join(', ');
+    throw new Error(`BAD_REQUEST: Use your school email. This campus accepts ${list}.`);
+  }
+}
 
 export const register = mutation({
   args: {
@@ -78,10 +52,16 @@ export const register = mutation({
     password: v.string(),
   },
   handler: async (ctx, args) => {
-    const email = args.email.toLowerCase();
+    const config = await loadConfig(ctx);
+    if (!config) throw new Error('BAD_REQUEST: This campus has not been set up yet.');
+    if (!config.allowSelfRegistration) {
+      throw new Error('FORBIDDEN: Registration is closed. Ask your campus IT team for an account.');
+    }
 
-    if (args.password.length < 8)
-      throw new Error('BAD_REQUEST: Password must be at least 8 characters');
+    const email = args.email.toLowerCase();
+    await assertEmailAllowed(ctx, email);
+
+    assertPasswordOk(args.password);
     if (!/^[a-z0-9_]{3,24}$/.test(args.username)) {
       throw new Error(
         'BAD_REQUEST: Username must be 3-24 lowercase letters, numbers or underscores',
@@ -125,7 +105,7 @@ export const register = mutation({
 });
 
 export const login = mutation({
-  args: { email: v.string(), password: v.string() },
+  args: { email: v.string(), password: v.string(), adminOnly: v.optional(v.boolean()) },
   handler: async (ctx, args) => {
     const user = await ctx.db
       .query('users')
@@ -137,13 +117,26 @@ export const login = mutation({
     if (!user || user.deletedAt) throw invalid;
     if (!(await verifyPassword(args.password, user.passwordHash))) throw invalid;
 
+    if (user.suspendedAt) {
+      throw new Error(
+        `FORBIDDEN: This account is suspended.${user.suspendedReason ? ` ${user.suspendedReason}` : ''}`,
+      );
+    }
+
+    // The admin door is a different door, not a different password. Someone who
+    // signs in there without the flag gets told plainly rather than silently
+    // dropped onto the student app.
+    if (args.adminOnly && !user.isAdmin) {
+      throw new Error('FORBIDDEN: That account does not have administrator access.');
+    }
+
     const now = Date.now();
     const token = newToken();
     await ctx.db.insert('sessions', { userId: user._id, token, expiresAt: sessionExpiry(now) });
     await ctx.db.patch(user._id, { lastSeenAt: now });
 
     const major = user.majorId ? await ctx.db.get(user.majorId) : null;
-    return { token, user: toPublicUser(user, major, true) };
+    return { token, user: toPublicUser(user, major, true), isAdmin: user.isAdmin };
   },
 });
 
@@ -175,6 +168,7 @@ export const me = query({
       settings: user.settings,
       onboardedAt: user.onboardedAt ?? null,
       isAdmin: user.isAdmin,
+      mustChangePassword: user.mustChangePassword ?? false,
     };
   },
 });
@@ -206,6 +200,74 @@ export const updateProfile = mutation({
       ...(args.pronouns !== undefined ? { pronouns: args.pronouns } : {}),
       ...(args.settings ? { settings: { ...user.settings, ...args.settings } } : {}),
     });
+    return null;
+  },
+});
+
+/** Signed-in password change. Requires the current password — an active session is
+ *  not proof that the person at the keyboard is the account holder. */
+export const changePassword = mutation({
+  args: { token: v.string(), currentPassword: v.string(), newPassword: v.string() },
+  handler: async (ctx, args) => {
+    const user = await requireUser(ctx, args.token);
+    if (!(await verifyPassword(args.currentPassword, user.passwordHash))) {
+      throw new Error('BAD_REQUEST: Your current password is not right');
+    }
+    assertPasswordOk(args.newPassword);
+
+    await ctx.db.patch(user._id, {
+      passwordHash: await hashPassword(args.newPassword),
+      mustChangePassword: false,
+    });
+
+    // Every other session for this account is now stale. Killing them is the point
+    // of changing a password you think somebody else knows.
+    const sessions = await ctx.db
+      .query('sessions')
+      .withIndex('by_user', (q) => q.eq('userId', user._id))
+      .collect();
+    for (const session of sessions) {
+      if (session.token !== args.token) await ctx.db.delete(session._id);
+    }
+    return null;
+  },
+});
+
+/**
+ * Redeem an admin-issued reset code.
+ *
+ * There is no mail service, so the code is handed over out-of-band. It is
+ * single-use and short-lived, and redeeming it invalidates every existing session
+ * for the account.
+ */
+export const redeemPasswordReset = mutation({
+  args: { code: v.string(), newPassword: v.string() },
+  handler: async (ctx, args) => {
+    const reset = await ctx.db
+      .query('passwordResets')
+      .withIndex('by_token', (q) => q.eq('token', args.code.trim().toUpperCase()))
+      .unique();
+
+    if (!reset || reset.usedAt || reset.expiresAt < Date.now()) {
+      throw new Error('BAD_REQUEST: That reset code is not valid any more');
+    }
+    assertPasswordOk(args.newPassword);
+
+    const user = await ctx.db.get(reset.userId);
+    if (!user || user.deletedAt) throw new Error('NOT_FOUND: That account is gone');
+
+    await ctx.db.patch(user._id, {
+      passwordHash: await hashPassword(args.newPassword),
+      mustChangePassword: false,
+    });
+    await ctx.db.patch(reset._id, { usedAt: Date.now() });
+
+    const sessions = await ctx.db
+      .query('sessions')
+      .withIndex('by_user', (q) => q.eq('userId', user._id))
+      .collect();
+    for (const session of sessions) await ctx.db.delete(session._id);
+
     return null;
   },
 });

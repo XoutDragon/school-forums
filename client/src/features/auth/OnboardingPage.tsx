@@ -66,30 +66,31 @@ export function OnboardingPage() {
 
   const finish = () => navigate('/');
 
+  /**
+   * Skipping still onboards, with defaults.
+   *
+   * The alternative — marking the account onboarded with nothing filled in — leaves
+   * a student on a home page with no spaces, no classmates and no suggestions,
+   * which reads as a broken app rather than as a skipped wizard.
+   */
   const skip = async () => {
-    console.log('Skip clicked', { majors, interests, majorId, interestIds });
+    if (!majors?.length || !interests?.length) return;
 
-    if (!majors?.length || !interests?.length) {
-      console.log('Data not loaded yet, returning');
-      return;
-    }
-
-    const defaultMajorId = majorId || majors[0].id;
-    const defaultInterests = interestIds.length >= 3 ? interestIds : interests.slice(0, 3).map((i) => i.id);
-
-    console.log('Calling onboarding with:', { defaultMajorId, defaultInterests });
+    const defaultMajorId = majorId || majors[0]?.id;
+    if (!defaultMajorId) return;
+    const defaultInterests =
+      interestIds.length >= 3 ? interestIds : interests.slice(0, 3).map((i) => i.id);
 
     try {
-      const result = await runOnboarding({
+      await runOnboarding({
         majorId: defaultMajorId,
         year: year || 'FRESHMAN',
         interestIds: defaultInterests,
         courseIds: [],
       });
-      console.log('Onboarding result:', result);
       navigate('/');
     } catch (error) {
-      console.error('Onboarding error:', error);
+      console.error('Onboarding failed', error);
     }
   };
 

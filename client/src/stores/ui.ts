@@ -6,13 +6,22 @@ interface UiState {
   theme: Theme;
   paletteOpen: boolean;
   memberListOpen: boolean;
+  /** Admin dashboard rail, remembered between visits. */
+  adminSidebarOpen: boolean;
   toggleTheme: () => void;
+  setTheme: (theme: Theme) => void;
   setPaletteOpen: (open: boolean) => void;
   toggleMemberList: () => void;
+  toggleAdminSidebar: () => void;
 }
 
+/**
+ * Light is the default now (see the note at the top of index.css), so the class on
+ * the root element marks dark rather than light. That is also what Tailwind's
+ * `darkMode: 'class'` expects, which is one fewer thing to hold in your head.
+ */
 function applyTheme(theme: Theme) {
-  document.documentElement.classList.toggle('light', theme === 'light');
+  document.documentElement.classList.toggle('dark', theme === 'dark');
   try {
     localStorage.setItem('cc-theme', theme);
   } catch {
@@ -20,23 +29,46 @@ function applyTheme(theme: Theme) {
   }
 }
 
-const stored = (() => {
+const stored: Theme = (() => {
   try {
-    return localStorage.getItem('cc-theme') === 'light' ? 'light' : 'dark';
+    const saved = localStorage.getItem('cc-theme');
+    if (saved === 'dark' || saved === 'light') return saved;
   } catch {
-    return 'dark';
+    /* fall through to the system preference */
   }
-})() satisfies Theme;
+  // No stored choice: follow the OS, the way both reference products do.
+  try {
+    return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+  } catch {
+    return 'light';
+  }
+})();
+
+applyTheme(stored);
+
+const storedSidebar = (() => {
+  try {
+    return localStorage.getItem('cc-admin-rail') !== 'closed';
+  } catch {
+    return true;
+  }
+})();
 
 export const useUi = create<UiState>((set, get) => ({
   theme: stored,
   paletteOpen: false,
   memberListOpen: true,
+  adminSidebarOpen: storedSidebar,
 
   toggleTheme() {
     const next: Theme = get().theme === 'dark' ? 'light' : 'dark';
     applyTheme(next);
     set({ theme: next });
+  },
+
+  setTheme(theme) {
+    applyTheme(theme);
+    set({ theme });
   },
 
   setPaletteOpen(paletteOpen) {
@@ -45,5 +77,15 @@ export const useUi = create<UiState>((set, get) => ({
 
   toggleMemberList() {
     set({ memberListOpen: !get().memberListOpen });
+  },
+
+  toggleAdminSidebar() {
+    const next = !get().adminSidebarOpen;
+    try {
+      localStorage.setItem('cc-admin-rail', next ? 'open' : 'closed');
+    } catch {
+      /* not worth surfacing */
+    }
+    set({ adminSidebarOpen: next });
   },
 }));

@@ -10,6 +10,7 @@ import {
   requireUser,
   roleIn,
 } from './lib/auth';
+import { authorityIn } from './lib/permissions';
 import { anonAlias } from './lib/anon';
 import { toMessageDto, type MessageDto } from './lib/serialize';
 
@@ -314,6 +315,91 @@ export const typingIn = query({
           }),
       )
     ).filter((entry): entry is { name: string } => entry !== null);
+  },
+});
+
+// ── Pinned messages (section 5.2) ──────────────────────────────────────────
+
+/**
+ * A channel's pins, newest first.
+ *
+ * Pins are the counterweight to infinite scroll: a channel where the useful thing
+ * was said three weeks ago is a channel where the useful thing is lost. Reactive,
+ * so pinning shows up in the panel without a refetch.
+ */
+export const pinned = query({
+  args: { token: v.string(), channelId: v.id('channels') },
+  handler: async (ctx, args) => {
+    const user = await requireUser(ctx, args.token);
+    const channel = await ctx.db.get(args.channelId);
+    if (!channel) throw new Error('NOT_FOUND: No channel there');
+    await assertCanView(ctx, channel.spaceId, user._id);
+
+    const pins = await ctx.db
+      .query('pinnedMessages')
+      .withIndex('by_channel', (q) => q.eq('channelId', args.channelId))
+      .collect();
+
+    const messages = (await Promise.all(pins.map((pin) => ctx.db.get(pin.messageId)))).filter(
+      (m): m is Doc<'messages'> => m !== null && !m.deletedAt,
+    );
+
+    const dtos = await hydrate(ctx, messages, user._id);
+    const pinnedAt = new Map(pins.map((p) => [p.messageId as string, p._creationTime]));
+
+    return dtos
+      .map((dto) => ({ ...dto, pinnedAt: pinnedAt.get(dto.id) ?? dto.createdAt }))
+      .sort((a, b) => b.pinnedAt - a.pinnedAt);
+  },
+});
+
+/**
+ * Pin, or unpin if it is already pinned.
+ *
+ * One call rather than two because the button is one button. Requires the
+ * `pinMessages` permission, which MOD and above hold by default and a custom role
+ * can grant to anyone else.
+ */
+export const togglePin = mutation({
+  args: { token: v.string(), messageId: v.id('messages') },
+  handler: async (ctx, args) => {
+    const user = await requireUser(ctx, args.token);
+    const message = await ctx.db.get(args.messageId);
+    if (!message || message.deletedAt) throw new Error('NOT_FOUND: No message there');
+
+    const channel = await ctx.db.get(message.channelId);
+    if (!channel) throw new Error('NOT_FOUND: No channel there');
+
+    const authority = await authorityIn(ctx, channel.spaceId, user);
+    if (!authority.permissions.pinMessages) {
+      throw new Error('FORBIDDEN: You do not have permission to pin messages here');
+    }
+
+    const existing = await ctx.db
+      .query('pinnedMessages')
+      .withIndex('by_message', (q) => q.eq('messageId', args.messageId))
+      .unique();
+
+    if (existing) {
+      await ctx.db.delete(existing._id);
+      return { pinned: false };
+    }
+
+    // A pin board with fifty things on it is a channel with extra steps.
+    const current = await ctx.db
+      .query('pinnedMessages')
+      .withIndex('by_channel', (q) => q.eq('channelId', message.channelId))
+      .collect();
+    if (current.length >= 50) {
+      throw new Error('BAD_REQUEST: This channel has 50 pins already. Unpin something first.');
+    }
+
+    await ctx.db.insert('pinnedMessages', {
+      channelId: message.channelId,
+      messageId: args.messageId,
+      pinnedById: user._id,
+    });
+    return { pinned: true };
   },
 });
 

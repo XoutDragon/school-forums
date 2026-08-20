@@ -8,12 +8,16 @@ import { Avatar, Badge, Skeleton } from '@/components/ui';
 import { MessageList, type ChannelDto, type MessageDto } from '@/features/chat/MessageList';
 import { Composer } from '@/features/chat/Composer';
 import { ThreadPanel } from '@/features/chat/ThreadPanel';
+import { PinnedPanel } from '@/features/chat/PinnedPanel';
+import { VoicePanel } from '@/features/voice/VoicePanel';
 import {
   IconFolder,
   IconHash,
   IconHelp,
   IconIncognito,
   IconMegaphone,
+  IconPin,
+  IconSettings,
   IconSpeaker,
   IconUsers,
 } from '@/components/Icons';
@@ -35,10 +39,29 @@ interface PublicUser {
   isOnline?: boolean;
 }
 
+interface MemberRole {
+  id: string;
+  name: string;
+  color: string;
+  position: number;
+}
+
 interface Member {
   role: string;
   nickname: string | null;
+  roles: MemberRole[];
   user: PublicUser;
+}
+
+export interface SpacePermissions {
+  manageChannels: boolean;
+  manageRoles: boolean;
+  manageMembers: boolean;
+  moderateMessages: boolean;
+  pinMessages: boolean;
+  postAnnouncements: boolean;
+  inviteMembers: boolean;
+  useVoice: boolean;
 }
 
 interface SpaceDetail {
@@ -47,19 +70,33 @@ interface SpaceDetail {
   slug: string;
   description: string | null;
   type: string;
+  tags: string[];
+  visibility: string;
+  isPublished: boolean;
   memberCount: number;
   myRole: string | null;
+  myPermissions: SpacePermissions;
+  isCampusAdmin: boolean;
   channels: ChannelDto[];
 }
+
+/** Right-hand rail: members, thread and pins are mutually exclusive so the chat
+ *  pane never drops below a readable width. */
+type SidePanel = 'members' | 'thread' | 'pins';
 
 export function SpacePage() {
   const { spaceId, channelId } = useParams();
   const navigate = useNavigate();
   const { memberListOpen, toggleMemberList } = useUi();
   const [threadRoot, setThreadRoot] = useState<MessageDto | null>(null);
+  const [pinsOpen, setPinsOpen] = useState(false);
 
   const space = useQ<SpaceDetail>(api.spaces.get, spaceId ? { spaceId } : 'skip');
   const members = useQ<Member[]>(api.spaces.members, spaceId ? { spaceId } : 'skip');
+  const voiceCounts = useQ<Record<string, number>>(
+    api.voice.counts,
+    spaceId ? { spaceId } : 'skip',
+  );
   const markRead = useM(api.messages.markChannelRead);
 
   const channels = space?.channels ?? [];
@@ -81,22 +118,59 @@ export function SpacePage() {
   useEffect(() => {
     if (!active) return;
     setThreadRoot(null);
+    setPinsOpen(false);
     void markRead({ channelId: active.id });
   }, [active, markRead]);
 
   if (space === undefined) return <ChatSkeleton />;
 
+  const permissions = space.myPermissions;
+  const canManage =
+    space.isCampusAdmin ||
+    space.myRole === 'OWNER' ||
+    permissions.manageChannels ||
+    permissions.manageMembers ||
+    permissions.manageRoles;
+
+  const panel: SidePanel | null = threadRoot
+    ? 'thread'
+    : pinsOpen
+      ? 'pins'
+      : memberListOpen
+        ? 'members'
+        : null;
+
   return (
     <div className="flex h-full">
       {/* ── Channel list ──────────────────────────────────────────────────── */}
       <aside className="hidden w-60 shrink-0 flex-col border-r border-edge bg-panel md:flex">
-        <div className="border-b border-edge px-4 py-3.5">
-          <h1 className="truncate font-display text-[0.9375rem] font-semibold tracking-tight text-chalk">
-            {space.name}
-          </h1>
-          <p className="mt-0.5 font-mono text-[0.625rem] uppercase tracking-wider text-faint">
-            {space.type.toLowerCase()} · {space.memberCount} members
-          </p>
+        <div className="border-b border-edge px-4 py-3">
+          <div className="flex items-start gap-2">
+            <div className="min-w-0 flex-1">
+              <h1 className="truncate font-display text-[0.9375rem] font-semibold text-chalk">
+                {space.name}
+              </h1>
+              <p className="mt-0.5 font-mono text-[0.625rem] uppercase tracking-wider text-faint">
+                {space.type.toLowerCase().replace('_', ' ')} · {space.memberCount} members
+              </p>
+            </div>
+            {canManage && (
+              <Link
+                to={`/spaces/${space.id}/settings`}
+                aria-label="Space settings"
+                title="Space settings"
+                className="mt-0.5 shrink-0 rounded-md p-1 text-dim transition hover:bg-raised hover:text-chalk"
+              >
+                <IconSettings className="h-4 w-4" />
+              </Link>
+            )}
+          </div>
+
+          {!space.isPublished && (
+            <p className="mt-2 rounded-md border border-events/40 bg-events/[0.07] px-2 py-1.5 text-[0.6875rem] leading-snug text-events">
+              Not published. Students cannot see this space until it has an owner.
+            </p>
+          )}
         </div>
 
         <nav className="flex-1 space-y-0.5 overflow-y-auto p-2">
@@ -105,6 +179,7 @@ export function SpacePage() {
               key={channel.id}
               channel={channel}
               active={channel.id === active?.id}
+              inVoice={voiceCounts?.[channel.id] ?? 0}
               onClick={() => navigate(`/spaces/${space.id}/${channel.id}`)}
             />
           ))}
@@ -115,7 +190,7 @@ export function SpacePage() {
       <section className="flex min-w-0 flex-1 flex-col">
         {active && (
           <>
-            <header className="flex items-center gap-2.5 border-b border-edge bg-panel/60 px-4 py-3 backdrop-blur">
+            <header className="flex items-center gap-2.5 border-b border-edge bg-panel/70 px-4 py-3 backdrop-blur">
               <ChannelGlyph type={active.type} className="h-4 w-4 shrink-0 text-faint" />
               <h2 className="shrink-0 text-sm font-semibold text-chalk">{active.name}</h2>
               {active.topic && (
@@ -127,33 +202,51 @@ export function SpacePage() {
                 </>
               )}
               {active.type === 'ANONYMOUS' && (
-                <Badge tone="accent" className="ml-auto shrink-0">
+                <Badge tone="accent" className="shrink-0">
                   names hidden
                 </Badge>
               )}
-              <button
-                onClick={toggleMemberList}
-                className={cn(
-                  'ml-auto hidden shrink-0 rounded-md p-1.5 transition lg:block',
-                  memberListOpen
-                    ? 'bg-raised text-chalk'
-                    : 'text-dim hover:bg-raised hover:text-chalk',
+
+              <div className="ml-auto flex shrink-0 items-center gap-0.5">
+                {active.type !== 'VOICE_STUB' && (
+                  <HeaderToggle
+                    active={pinsOpen}
+                    label="Pinned messages"
+                    onClick={() => {
+                      setThreadRoot(null);
+                      setPinsOpen((open) => !open);
+                    }}
+                  >
+                    <IconPin />
+                  </HeaderToggle>
                 )}
-                aria-label={memberListOpen ? 'Hide member list' : 'Show member list'}
-                aria-pressed={memberListOpen}
-              >
-                <IconUsers />
-              </button>
+                <HeaderToggle
+                  active={memberListOpen && !pinsOpen && !threadRoot}
+                  label={memberListOpen ? 'Hide member list' : 'Show member list'}
+                  className="hidden lg:block"
+                  onClick={() => {
+                    setPinsOpen(false);
+                    setThreadRoot(null);
+                    toggleMemberList();
+                  }}
+                >
+                  <IconUsers />
+                </HeaderToggle>
+              </div>
             </header>
 
             {active.type === 'VOICE_STUB' ? (
-              <VoiceStub members={members ?? []} />
+              <VoicePanel room={active.id} scope="CHANNEL" title={`#${active.name}`} />
             ) : (
               <>
                 <MessageList
                   channel={active}
                   spaceRole={space.myRole}
-                  onOpenThread={setThreadRoot}
+                  canPin={permissions.pinMessages}
+                  onOpenThread={(message) => {
+                    setPinsOpen(false);
+                    setThreadRoot(message);
+                  }}
                 />
                 <Composer channel={active} spaceRole={space.myRole} />
               </>
@@ -162,13 +255,50 @@ export function SpacePage() {
         )}
       </section>
 
-      {/* ── Thread panel replaces the member list when open ────────────────── */}
-      {threadRoot ? (
+      {/* ── One right-hand panel at a time. ───────────────────────────────── */}
+      {panel === 'thread' && threadRoot && (
         <ThreadPanel root={threadRoot} channel={active!} onClose={() => setThreadRoot(null)} />
-      ) : (
-        memberListOpen && <MemberList members={members} />
       )}
+      {panel === 'pins' && active && (
+        <PinnedPanel
+          channelId={active.id}
+          channelName={active.name}
+          canPin={permissions.pinMessages}
+          onClose={() => setPinsOpen(false)}
+        />
+      )}
+      {panel === 'members' && <MemberList members={members} />}
     </div>
+  );
+}
+
+function HeaderToggle({
+  active,
+  label,
+  onClick,
+  className,
+  children,
+}: {
+  active: boolean;
+  label: string;
+  onClick: () => void;
+  className?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      aria-label={label}
+      aria-pressed={active}
+      title={label}
+      className={cn(
+        'rounded-md p-1.5 transition',
+        active ? 'nav-active' : 'text-dim hover:bg-raised hover:text-chalk',
+        className,
+      )}
+    >
+      {children}
+    </button>
   );
 }
 
@@ -180,10 +310,12 @@ function ChannelGlyph({ type, className }: { type: string; className?: string })
 function ChannelRow({
   channel,
   active,
+  inVoice,
   onClick,
 }: {
   channel: ChannelDto;
   active: boolean;
+  inVoice: number;
   onClick: () => void;
 }) {
   const unread = channel.unreadCount ?? 0;
@@ -192,7 +324,7 @@ function ChannelRow({
       onClick={onClick}
       className={cn(
         'group flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left transition',
-        active ? 'bg-raised text-chalk' : 'text-dim hover:bg-raised/60 hover:text-chalk',
+        active ? 'nav-active' : 'text-dim hover:bg-raised hover:text-chalk',
       )}
     >
       <ChannelGlyph type={channel.type} className="h-3.5 w-3.5 shrink-0 opacity-70" />
@@ -204,6 +336,15 @@ function ChannelRow({
       >
         {channel.name}
       </span>
+
+      {/* A voice channel with people in it says so, or nobody ever joins one. */}
+      {channel.type === 'VOICE_STUB' && inVoice > 0 && (
+        <span className="flex shrink-0 items-center gap-1 rounded-full bg-courses/15 px-1.5 font-mono text-[0.5625rem] font-bold text-courses">
+          <span className="h-1.5 w-1.5 rounded-full bg-courses" />
+          {inVoice}
+        </span>
+      )}
+
       {unread > 0 && !active && (
         <span className="shrink-0 rounded-full bg-accent px-1.5 font-mono text-[0.5625rem] font-bold text-white">
           {unread > 99 ? '99+' : unread}
@@ -238,73 +379,47 @@ function MemberList({ members }: { members?: Member[] }) {
         {onlineCount} online · {members.length} members
       </p>
       <div className="flex-1 space-y-0.5 overflow-y-auto p-2">
-        {sorted.map((member) => (
-          <Link
-            key={member.user.id}
-            to={`/u/${member.user.username}`}
-            className="flex items-center gap-2.5 rounded-md px-2 py-1.5 transition hover:bg-raised"
-          >
-            <Avatar
-              name={member.user.displayName}
-              src={member.user.avatarUrl}
-              seed={member.user.id}
-              size={26}
-              online={member.user.isOnline}
-            />
-            <span className="min-w-0 flex-1">
-              <span
-                className={cn(
-                  'block truncate text-[0.8125rem]',
-                  member.user.isOnline ? 'text-chalk' : 'text-dim',
+        {sorted.map((member) => {
+          // The highest-positioned custom role colours the name, the way it does in
+          // every chat app people already use.
+          const topRole = member.roles[0];
+          return (
+            <Link
+              key={member.user.id}
+              to={`/u/${member.user.username}`}
+              className="flex items-center gap-2.5 rounded-md px-2 py-1.5 transition hover:bg-raised"
+            >
+              <Avatar
+                name={member.user.displayName}
+                src={member.user.avatarUrl}
+                seed={member.user.id}
+                size={26}
+                online={member.user.isOnline}
+              />
+              <span className="min-w-0 flex-1">
+                <span
+                  className={cn(
+                    'block truncate text-[0.8125rem]',
+                    !topRole && (member.user.isOnline ? 'text-chalk' : 'text-dim'),
+                  )}
+                  style={topRole ? { color: topRole.color } : undefined}
+                >
+                  {member.nickname ?? member.user.displayName}
+                </span>
+                {topRole && (
+                  <span className="block truncate text-[0.625rem] text-faint">{topRole.name}</span>
                 )}
-              >
-                {member.nickname ?? member.user.displayName}
               </span>
-            </span>
-            {member.role !== 'MEMBER' && (
-              <span className="shrink-0 font-mono text-[0.5625rem] uppercase tracking-wide text-faint">
-                {member.role}
-              </span>
-            )}
-          </Link>
-        ))}
+              {member.role !== 'MEMBER' && (
+                <span className="shrink-0 font-mono text-[0.5625rem] uppercase tracking-wide text-faint">
+                  {member.role}
+                </span>
+              )}
+            </Link>
+          );
+        })}
       </div>
     </aside>
-  );
-}
-
-/** Voice channels render presence only. The honest version of "not built yet" is a
- *  room that shows who is in it, not a fake call UI. */
-function VoiceStub({ members }: { members: Member[] }) {
-  const present = members.filter((m) => m.user.isOnline).slice(0, 8);
-
-  return (
-    <div className="flex flex-1 flex-col items-center justify-center gap-5 p-8 text-center">
-      <IconSpeaker className="h-7 w-7 text-faint" />
-      <div>
-        <h3 className="font-display text-display-md text-chalk">Study hall</h3>
-        <p className="mx-auto mt-1.5 max-w-sm text-sm leading-relaxed text-dim">
-          Co-working presence, no audio. People here are working on their own thing at the same time
-          as you.
-        </p>
-      </div>
-
-      {present.length === 0 ? (
-        <p className="text-sm text-faint">Nobody in here right now. Being first tends to work.</p>
-      ) : (
-        <div className="flex flex-wrap justify-center gap-2">
-          {present.map((m) => (
-            <div
-              key={m.user.id}
-              className="flex items-center gap-2 rounded-full border border-edge bg-raised px-2.5 py-1.5"
-            >
-              <Avatar name={m.user.displayName} src={m.user.avatarUrl} seed={m.user.id} size={22} />
-              <span className="text-xs text-chalk">{m.user.displayName}</span>
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
   );
 }
 
@@ -331,3 +446,6 @@ function ChatSkeleton() {
     </div>
   );
 }
+
+/** Kept for the settings page, which links back here. */
+export type { Member as SpaceMemberRow };

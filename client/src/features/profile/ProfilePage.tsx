@@ -1,6 +1,9 @@
 import { useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import type { MeUser, PublicUser } from '@campusconnect/shared';
+import type { PublicUser } from '@campusconnect/shared';
+// MeUser comes from the store, not the shared package: shared/ still describes the
+// REST shape, where timestamps were ISO strings. Convex returns epoch milliseconds.
+import type { MeUser } from '@/stores/auth';
 import { YEAR_LABELS } from '@/lib/utils';
 import { useAuth } from '@/stores/auth';
 import {
@@ -16,8 +19,10 @@ import {
   Textarea,
 } from '@/components/ui';
 import { IconWave } from '@/components/Icons';
+import { ImagePicker } from '@/components/ui/overlays';
 import { api } from '@/lib/convexApi';
 import { useM, useQ } from '@/lib/convexHooks';
+import { useUpload } from '@/lib/upload';
 import { useMe } from '@/hooks/useMe';
 
 interface Profile extends PublicUser {
@@ -229,7 +234,9 @@ function EditProfile({ me, onDone }: { me: MeUser; onDone: () => void }) {
   const [busy, setBusy] = useState(false);
 
   return (
-    <Card>
+    <Card className="space-y-6">
+      <AvatarSection me={me} />
+
       <form
         className="space-y-4"
         onSubmit={async (e) => {
@@ -301,5 +308,71 @@ function EditProfile({ me, onDone }: { me: MeUser; onDone: () => void }) {
         </Button>
       </form>
     </Card>
+  );
+}
+
+/**
+ * Profile picture (feature 2).
+ *
+ * Its own section above the details form rather than a field inside it, because it
+ * saves on its own: an image upload is a two-step round trip (blob first, then the
+ * record) and burying that inside a form submit means the picture and the bio can
+ * fail independently while showing one "Save changes" spinner.
+ */
+function AvatarSection({ me }: { me: MeUser }) {
+  const { upload, busy: uploading, error: uploadError } = useUpload();
+  const setAvatar = useM(api.users.setAvatar);
+  const clearAvatar = useM(api.users.clearAvatar);
+  const [error, setError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+
+  async function onPick(file: File) {
+    setError(null);
+    setSaving(true);
+    try {
+      const storageId = await upload(file);
+      if (!storageId) return;
+      await setAvatar({ storageId });
+    } catch (err) {
+      const raw = err instanceof Error ? err.message : '';
+      setError(/(?::\s)(.*)/.exec(raw)?.[1] ?? 'Could not save that picture.');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <section>
+      <Eyebrow className="mb-3">Profile picture</Eyebrow>
+      <ImagePicker
+        onPick={(file) => void onPick(file)}
+        preview={me.avatarUrl}
+        disabled={uploading || saving}
+        label={me.avatarUrl ? 'Change picture' : 'Upload a picture'}
+      />
+
+      {(error ?? uploadError) && (
+        <p role="alert" className="mt-2 text-xs text-events">
+          {error ?? uploadError}
+        </p>
+      )}
+
+      {me.avatarUrl && (
+        <Button
+          size="sm"
+          variant="ghost"
+          className="mt-2"
+          disabled={saving}
+          onClick={() => void clearAvatar({})}
+        >
+          Remove picture
+        </Button>
+      )}
+
+      <p className="mt-2 text-xs leading-relaxed text-faint">
+        Without one you get a coloured tile with your initials, generated from your account — it
+        stays the same everywhere, so people still recognise you.
+      </p>
+    </section>
   );
 }

@@ -49,6 +49,10 @@ const spaceType = v.union(
   v.literal('RESIDENCE'),
   v.literal('GENERAL'),
   v.literal('STUDY_GROUP'),
+  // Student-created. A club Space is chartered by the institution; an interest
+  // Space is three people who like bouldering, and the app should not pretend
+  // those are the same thing.
+  v.literal('INTEREST'),
 );
 
 const visibility = v.union(v.literal('PUBLIC'), v.literal('PRIVATE'));
@@ -183,6 +187,14 @@ export default defineSchema({
     lastSeenAt: v.number(),
     verifiedAt: v.optional(v.number()),
     onboardedAt: v.optional(v.number()),
+    /** Set when the avatar came from Convex file storage, so deleting it can also
+     *  free the blob. Seeded avatars are plain URLs and have no storage id. */
+    avatarStorageId: v.optional(v.id('_storage')),
+    /** An admin can suspend an account without destroying its content. */
+    suspendedAt: v.optional(v.number()),
+    suspendedReason: v.optional(v.string()),
+    /** Set by "send a password reset". The account still works; the client nags. */
+    mustChangePassword: v.optional(v.boolean()),
     // Users are anonymised, never hard-deleted (CLAUDE.md section 8).
     deletedAt: v.optional(v.number()),
   })
@@ -242,6 +254,16 @@ export default defineSchema({
     linkedClubId: v.optional(v.id('clubs')),
     linkedCourseId: v.optional(v.id('courses')),
     linkedMajorId: v.optional(v.id('majors')),
+    /** Who pressed create. Distinct from ownerId, which can be handed on. */
+    createdById: v.optional(v.id('users')),
+    /**
+     * Admin-drafted Spaces are invisible until a student is made owner of them.
+     * Undefined means "drafted, not yet claimed"; every other Space is published
+     * at creation. Queries that list Spaces must filter on this.
+     */
+    publishedAt: v.optional(v.number()),
+    /** Free-text interest tags, used by discovery and the club quiz. */
+    tags: v.optional(v.array(v.string())),
   })
     // UNIQUE: slug
     .index('by_slug', ['slug'])
@@ -260,6 +282,12 @@ export default defineSchema({
     role: spaceRole,
     nickname: v.optional(v.string()),
     joinedAt: v.number(),
+    /**
+     * Custom roles are cosmetic-plus-permissions labels on top of the four-rank
+     * ladder, the way Discord's roles sit beside server ownership. The ladder
+     * still decides moderation authority; these decide the rest.
+     */
+    roleIds: v.optional(v.array(v.id('spaceRoles'))),
   })
     // UNIQUE: (spaceId, userId)
     .index('by_space', ['spaceId'])
@@ -743,6 +771,134 @@ export default defineSchema({
     userId: v.id('users'),
     token: v.string(),
     expiresAt: v.number(),
+  })
+    .index('by_token', ['token'])
+    .index('by_user', ['userId']),
+
+  // ── Custom space roles (section 5.2 extension) ───────────────────────────
+
+  /**
+   * A named, coloured role a space owner can mint and hand out. Permissions are a
+   * flat record rather than a bitfield: there are eight of them, this is not
+   * Discord's scale, and a readable document beats four bytes.
+   */
+  spaceRoles: defineTable({
+    spaceId: v.id('spaces'),
+    name: v.string(),
+    /** Hex, shown on the member list and beside names in chat. */
+    color: v.string(),
+    /** Higher sorts first in the member list. */
+    position: v.number(),
+    permissions: v.object({
+      manageChannels: v.boolean(),
+      manageRoles: v.boolean(),
+      manageMembers: v.boolean(),
+      moderateMessages: v.boolean(),
+      pinMessages: v.boolean(),
+      postAnnouncements: v.boolean(),
+      inviteMembers: v.boolean(),
+      useVoice: v.boolean(),
+    }),
+  })
+    .index('by_space', ['spaceId'])
+    .index('by_space_name', ['spaceId', 'name']),
+
+  // ── Instance configuration (section 6 of the brief, first-run setup) ─────
+
+  /**
+   * One row, ever. Written by the IT administrator on first visit and read by
+   * every unauthenticated page load, which is why it is its own table rather than
+   * a field hung off some other document.
+   */
+  instanceConfig: defineTable({
+    schoolName: v.string(),
+    shortName: v.string(),
+    /** Bare domains, lowercase, no @. An empty array means any email is accepted. */
+    allowedEmailDomains: v.array(v.string()),
+    tagline: v.optional(v.string()),
+    logoUrl: v.optional(v.string()),
+    supportEmail: v.optional(v.string()),
+    currentTerm: v.string(),
+    /** When false, only admins create Spaces. */
+    allowStudentSpaces: v.boolean(),
+    /** When false, registration is closed and only admins can add accounts. */
+    allowSelfRegistration: v.boolean(),
+    setupCompletedAt: v.number(),
+    setupByUserId: v.id('users'),
+  }),
+
+  // ── Audit log (section 5.10 extension, admin dashboard) ─────────────────
+
+  /**
+   * Append-only record of consequential actions. The dashboard reads it as a feed,
+   * so the human-readable `summary` is stored rather than reconstructed — the
+   * referenced rows may not exist by the time anyone reads the entry.
+   */
+  auditLogs: defineTable({
+    actorId: v.optional(v.id('users')),
+    actorName: v.string(),
+    action: v.string(),
+    targetType: v.string(),
+    targetId: v.optional(v.string()),
+    summary: v.string(),
+    metadata: v.optional(v.any()),
+  })
+    .index('by_action', ['action'])
+    .index('by_actor', ['actorId'])
+    .index('by_target', ['targetType', 'targetId']),
+
+  // ── Voice (section 5.2, replacing the VOICE_STUB placeholder) ───────────
+
+  /**
+   * Who is in a voice room right now. `room` is a channel id or a conversation id
+   * as a string, because Convex ids are per-table and one room key has to address
+   * both. Rows are dropped on leave and expire by heartbeat.
+   */
+  voiceParticipants: defineTable({
+    room: v.string(),
+    scope: v.union(v.literal('CHANNEL'), v.literal('DM')),
+    userId: v.id('users'),
+    /** Stable per browser tab, so one person in two tabs is two peers. */
+    peerId: v.string(),
+    muted: v.boolean(),
+    deafened: v.boolean(),
+    joinedAt: v.number(),
+    lastSeenAt: v.number(),
+  })
+    .index('by_room', ['room'])
+    .index('by_room_peer', ['room', 'peerId'])
+    .index('by_user', ['userId'])
+    .index('by_last_seen', ['lastSeenAt']),
+
+  /**
+   * WebRTC signalling mailbox. Convex is the signalling channel only — offers,
+   * answers and ICE candidates pass through here and the audio itself goes
+   * peer-to-peer. Rows are deleted by the recipient once consumed.
+   */
+  voiceSignals: defineTable({
+    room: v.string(),
+    fromPeerId: v.string(),
+    toPeerId: v.string(),
+    kind: v.union(v.literal('OFFER'), v.literal('ANSWER'), v.literal('ICE')),
+    /** Serialised SDP or ICE candidate. Opaque to the backend. */
+    payload: v.string(),
+  })
+    .index('by_recipient', ['room', 'toPeerId'])
+    .index('by_room', ['room']),
+
+  // ── Password resets (admin-initiated; no mail service runs here) ────────
+
+  /**
+   * An admin cannot read or set a password, only mint one of these. The token is
+   * surfaced in the dashboard for the admin to pass on out-of-band, which is what
+   * an email would have carried.
+   */
+  passwordResets: defineTable({
+    userId: v.id('users'),
+    token: v.string(),
+    issuedById: v.id('users'),
+    expiresAt: v.number(),
+    usedAt: v.optional(v.number()),
   })
     .index('by_token', ['token'])
     .index('by_user', ['userId']),

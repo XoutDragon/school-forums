@@ -3,44 +3,66 @@
 @tailwind utilities;
 
 /* ─────────────────────────────────────────────────────────── Token table ──
-   The base is a blue-black rather than a neutral grey, so indigo reads as native
-   to the surface instead of dropped onto it. Every panel step keeps that violet
-   undertone; nothing here is a Tailwind slate.
+   The reference points are Microsoft Teams and Apple's system apps, not a chat
+   client for games. Three things follow from that and they are why this file looks
+   the way it does:
+
+   1. **Light is the default.** Institutional software is used in daylight, in
+      lecture halls, next to a browser full of white pages. Dark is a first-class
+      option, not the ground state.
+
+   2. **Surfaces are neutral, not tinted.** The old palette was a blue-black so
+      indigo would read as native. Teams and macOS both use true greys and let the
+      one accent do the colouring, which is calmer over a long session and stops
+      the whole interface reading as "themed".
+
+   3. **The accent carries the brand alone.** #5B5FC7 is close enough to Teams'
+      brand ramp to feel familiar and far enough from Discord's blurple to not read
+      as a clone. Feature hues stay, but desaturated — they label things, they do
+      not decorate.
+
+   Raw hex belongs in this file and nowhere else.
    ─────────────────────────────────────────────────────────────────────────── */
 
 @layer base {
   :root {
-    --ink: 11 13 20; /* #0B0D14 — page */
-    --panel: 18 21 31; /* #12151F — rails, sidebars */
-    --raised: 26 30 43; /* #1A1E2B — cards, inputs */
-    --edge: 38 43 59; /* #262B3B — hairlines */
-    --chalk: 232 234 242; /* #E8EAF2 — primary text */
-    --dim: 139 147 169; /* #8B93A9 — secondary text */
-    --faint: 92 99 120; /* #5C6378 — tertiary, timestamps */
-    --accent: 99 102 241; /* indigo */
-    --accent-lift: 129 140 248;
-    --clubs: 245 158 11;
-    --courses: 16 185 129;
-    --events: 244 63 94;
-
-    color-scheme: dark;
-  }
-
-  :root.light {
-    --ink: 247 248 251;
-    --panel: 255 255 255;
-    --raised: 255 255 255;
-    --edge: 224 227 236;
-    --chalk: 22 25 36;
-    --dim: 95 103 124;
-    --faint: 138 145 163;
-    --accent: 79 70 229;
-    --accent-lift: 67 56 202;
-    --clubs: 180 83 9;
-    --courses: 4 120 87;
-    --events: 190 24 93;
+    --ink: 245 245 245; /* #F5F5F5 — page, the Teams app background */
+    --panel: 255 255 255; /* #FFFFFF — rails, sidebars, cards */
+    --raised: 250 250 250; /* #FAFAFA — inputs, hover fills */
+    --edge: 225 225 225; /* #E1E1E1 — hairlines */
+    --chalk: 36 36 36; /* #242424 — primary text */
+    --dim: 97 97 97; /* #616161 — secondary text */
+    --faint: 141 141 141; /* #8D8D8D — tertiary, timestamps */
+    --accent: 91 95 199; /* #5B5FC7 */
+    --accent-lift: 68 71 173; /* pressed / higher-emphasis accent */
+    --accent-wash: 237 237 250; /* selected row, active nav */
+    --clubs: 168 106 20;
+    --courses: 15 122 102;
+    --events: 196 49 75;
+    --shadow-card: 0 1px 2px rgb(0 0 0 / 0.06), 0 2px 8px rgb(0 0 0 / 0.04);
+    --shadow-pop: 0 4px 12px rgb(0 0 0 / 0.1), 0 12px 28px rgb(0 0 0 / 0.08);
 
     color-scheme: light;
+  }
+
+  :root.dark {
+    --ink: 26 26 26; /* #1A1A1A */
+    --panel: 41 41 41; /* #292929 */
+    --raised: 55 55 55; /* #373737 */
+    --edge: 66 66 66; /* #424242 */
+    --chalk: 245 245 245;
+    --dim: 173 173 173;
+    --faint: 125 125 125;
+    --accent: 127 133 245; /* #7F85F5 — Teams' dark-theme brand step */
+    --accent-lift: 162 166 250;
+    --accent-wash: 47 48 71;
+    --clubs: 226 168 79;
+    --courses: 79 192 168;
+    --events: 232 106 127;
+    --shadow-card: 0 1px 2px rgb(0 0 0 / 0.3);
+    --shadow-pop: 0 4px 14px rgb(0 0 0 / 0.45), 0 12px 32px rgb(0 0 0 / 0.35);
+
+    color-scheme: dark;
   }
 
   html {
@@ -58,26 +80,27 @@
   }
 
   ::selection {
-    @apply bg-accent/30;
+    @apply bg-accent/25;
   }
 
-  /* Scrollbars match the surface instead of punching a light hole in a dark panel. */
+  /* Scrollbars stay out of the way until you are in the thing that scrolls, which
+     is the macOS behaviour and the reason its lists look uncluttered. */
   * {
     scrollbar-width: thin;
-    scrollbar-color: rgb(var(--edge)) transparent;
+    scrollbar-color: rgb(var(--faint) / 0.35) transparent;
   }
   *::-webkit-scrollbar {
     width: 10px;
     height: 10px;
   }
   *::-webkit-scrollbar-thumb {
-    background-color: rgb(var(--edge));
+    background-color: rgb(var(--faint) / 0.3);
     border-radius: 999px;
     border: 3px solid transparent;
     background-clip: content-box;
   }
   *::-webkit-scrollbar-thumb:hover {
-    background-color: rgb(var(--faint) / 0.6);
+    background-color: rgb(var(--faint) / 0.55);
   }
 
   @media (prefers-reduced-motion: reduce) {
@@ -97,8 +120,8 @@
    ─────────────────────────────────────────────────────────────────────────── */
 
 @layer components {
-  /* The signature typographic device: course codes, terms and counts are set in the
-     utility face, because on a campus those genuinely are codes. */
+  /* Course codes, terms and counts are set in the utility face, because on a
+     campus those genuinely are codes. */
   .code-chip {
     @apply inline-flex items-center rounded-md border border-edge bg-raised px-1.5 py-0.5
            font-mono text-code text-dim;
@@ -108,22 +131,30 @@
     @apply font-mono text-eyebrow uppercase text-faint;
   }
 
+  /* Cards are defined by a soft shadow rather than a hard border — the Apple move.
+     The border stays as a hairline for the dark theme, where shadow alone vanishes. */
   .card {
     @apply rounded-xl border border-edge bg-panel;
+    box-shadow: var(--shadow-card);
   }
 
   .hairline {
     @apply border-edge;
   }
 
-  /* The week strip's day column. Today gets a filled accent spine down its left edge —
-     the one place on the home page that uses the accent as a block rather than a tint. */
+  /* Teams' selected-row treatment: a wash plus a short accent spine, no pill. */
+  .nav-active {
+    background-color: rgb(var(--accent-wash));
+    @apply text-accent-lift;
+  }
+
   .day-col {
-    @apply relative flex min-h-[7.5rem] flex-col gap-1.5 rounded-lg border border-edge/70
-           bg-panel/60 p-2.5 transition-colors;
+    @apply relative flex min-h-[7.5rem] flex-col gap-1.5 rounded-lg border border-edge
+           bg-panel p-2.5 transition-colors;
   }
   .day-col-today {
-    @apply border-accent/40 bg-accent/[0.06];
+    @apply border-accent/40;
+    background-color: rgb(var(--accent-wash));
   }
   .day-col-today::before {
     content: '';
@@ -140,5 +171,11 @@
   }
   .no-scrollbar {
     scrollbar-width: none;
+  }
+  .shadow-card {
+    box-shadow: var(--shadow-card);
+  }
+  .shadow-pop {
+    box-shadow: var(--shadow-pop);
   }
 }

@@ -28,13 +28,13 @@ export function ClubQuizPage() {
   const [submitted, setSubmitted] = useState(false);
 
   const questions = usePublicQ<Question[]>(api.clubs.quizQuestions);
+  const allTags = Object.values(answers).flat();
   // Results are a query, so they are only fetched once the student has answered.
   const liveResults = useQ<Result[]>(api.clubs.quizResults, submitted ? { tags: allTags } : 'skip');
 
   if (!questions) return <Skeleton className="h-96 w-full" />;
 
   const answered = Object.keys(answers).length;
-  const allTags = Object.values(answers).flat();
 
   const results = submitted ? liveResults : null;
 

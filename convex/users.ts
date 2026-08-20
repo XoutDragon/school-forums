@@ -369,3 +369,73 @@ export const unenrol = mutation({
     return null;
   },
 });
+
+// ── Profile picture (feature 2) ────────────────────────────────────────────
+
+/**
+ * Set the signed-in student's avatar from an uploaded blob.
+ *
+ * The client uploads to Convex storage first (see convex/files.ts) and passes the
+ * storage id here. The resolved URL is denormalised onto the user document because
+ * avatars are read constantly — every message row, every member list — and
+ * resolving a storage id per read would turn one query into hundreds.
+ *
+ * The previous blob is deleted on replacement. Nothing else references it, and
+ * orphaned images are the kind of cost that only shows up on a bill.
+ */
+export const setAvatar = mutation({
+  args: { token: v.string(), storageId: v.id('_storage') },
+  handler: async (ctx, args) => {
+    const user = await requireUser(ctx, args.token);
+
+    const url = await ctx.storage.getUrl(args.storageId);
+    if (!url) throw new Error('BAD_REQUEST: That upload did not arrive. Try again.');
+
+    if (user.avatarStorageId && user.avatarStorageId !== args.storageId) {
+      await ctx.storage.delete(user.avatarStorageId).catch(() => undefined);
+    }
+
+    await ctx.db.patch(user._id, { avatarUrl: url, avatarStorageId: args.storageId });
+    return { avatarUrl: url };
+  },
+});
+
+/** Back to the generated initials tile. */
+export const clearAvatar = mutation({
+  args: { token: v.string() },
+  handler: async (ctx, args) => {
+    const user = await requireUser(ctx, args.token);
+    if (user.avatarStorageId) {
+      await ctx.storage.delete(user.avatarStorageId).catch(() => undefined);
+    }
+    await ctx.db.patch(user._id, { avatarUrl: undefined, avatarStorageId: undefined });
+    return null;
+  },
+});
+
+/** Username lookup for the "add someone" fields in space and admin settings. */
+export const searchByName = query({
+  args: { token: v.string(), term: v.string(), limit: v.optional(v.number()) },
+  handler: async (ctx, args) => {
+    await requireUser(ctx, args.token);
+
+    const term = args.term.trim().toLowerCase();
+    if (term.length < 2) return [];
+
+    const rows = await ctx.db.query('users').take(600);
+    return rows
+      .filter(
+        (u) =>
+          !u.deletedAt &&
+          !u.suspendedAt &&
+          (u.username.includes(term) || u.displayName.toLowerCase().includes(term)),
+      )
+      .slice(0, args.limit ?? 8)
+      .map((u) => ({
+        id: u._id,
+        username: u.username,
+        displayName: u.displayName,
+        avatarUrl: u.avatarUrl ?? null,
+      }));
+  },
+});

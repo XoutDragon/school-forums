@@ -56,10 +56,14 @@ export interface ChannelDto {
 export function MessageList({
   channel,
   spaceRole,
+  canPin = false,
   onOpenThread,
 }: {
   channel: ChannelDto;
   spaceRole: string | null;
+  /** From the space's resolved permission set — a custom role can grant this to
+   *  someone who holds no moderation rank at all. */
+  canPin?: boolean;
   onOpenThread: (message: MessageDto) => void;
 }) {
   const me = useMe();
@@ -69,6 +73,7 @@ export function MessageList({
   const messages = useQ<MessageDto[]>(api.messages.list, { channelId: channel.id, limit });
   const toggleReaction = useM(api.messages.toggleReaction);
   const removeMessage = useM(api.messages.remove);
+  const togglePin = useM(api.messages.togglePin);
 
   const typing = useQ<{ name: string }[]>(api.messages.typingIn, { channelId: channel.id }) ?? [];
 
@@ -157,9 +162,11 @@ export function MessageList({
                 grouped={Boolean(grouped)}
                 isMine={message.author.kind === 'user' && message.author.user.id === me?.id}
                 canModerate={canModerate}
+                canPin={canPin}
                 onReact={(m, emoji) => void toggleReaction({ messageId: m.id, emoji })}
                 onOpenThread={onOpenThread}
                 onDelete={() => void removeMessage({ messageId: message.id })}
+                onTogglePin={() => void togglePin({ messageId: message.id })}
               />
             </div>
           );
@@ -186,17 +193,21 @@ function MessageRow({
   grouped,
   isMine,
   canModerate,
+  canPin,
   onReact,
   onOpenThread,
   onDelete,
+  onTogglePin,
 }: {
   message: MessageDto;
   grouped: boolean;
   isMine: boolean;
   canModerate: boolean;
+  canPin: boolean;
   onReact: (message: MessageDto, emoji: string) => void;
   onOpenThread: (message: MessageDto) => void;
   onDelete: () => void;
+  onTogglePin: () => void;
 }) {
   const [showEmoji, setShowEmoji] = useState(false);
 
@@ -369,6 +380,14 @@ function MessageRow({
               <IconButton label="Reply in thread" onClick={() => onOpenThread(message)}>
                 <IconThread className="h-3.5 w-3.5" />
               </IconButton>
+              {canPin && (
+                <IconButton
+                  label={message.isPinned ? 'Unpin message' : 'Pin message'}
+                  onClick={onTogglePin}
+                >
+                  <IconPin className={cn('h-3.5 w-3.5', message.isPinned && 'text-clubs')} />
+                </IconButton>
+              )}
               {(isMine || canModerate) && (
                 <IconButton label="Delete message" onClick={onDelete}>
                   <span className="text-xs">🗑</span>

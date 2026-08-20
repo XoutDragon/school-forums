@@ -6,6 +6,7 @@ import { useM, useQ } from '@/lib/convexHooks';
 import { useMe } from '@/hooks/useMe';
 import { Avatar, EmptyState, Input, Skeleton } from '@/components/ui';
 import { Markdown } from '@/features/chat/Markdown';
+import { VoicePanel } from '@/features/voice/VoicePanel';
 import { IconSend } from '@/components/Icons';
 
 interface PublicUser {
@@ -131,12 +132,7 @@ export function DmPage() {
                       onClick={() => void startDm(person.id)}
                       className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left transition hover:bg-raised/60"
                     >
-                      <Avatar
-                        name={person.title}
-                        src={null}
-                        seed={person.id}
-                        size={34}
-                      />
+                      <Avatar name={person.title} src={null} seed={person.id} size={34} />
                       <span className="min-w-0 flex-1">
                         <span className="block truncate text-sm font-medium text-chalk">
                           {person.title}
@@ -161,7 +157,8 @@ export function DmPage() {
                 Array.from({ length: 5 }, (_, i) => <Skeleton key={i} className="mb-1.5 h-14" />)
               ) : !conversations.length ? (
                 <p className="px-3 py-10 text-center text-sm text-dim">
-                  No conversations yet. Waving at someone or connecting with a study buddy starts one.
+                  No conversations yet. Waving at someone or connecting with a study buddy starts
+                  one.
                 </p>
               ) : (
                 conversations.map((c) => (
@@ -229,6 +226,15 @@ export function DmPage() {
                 {active?.title ?? 'Conversation'}
               </h2>
             </header>
+
+            {/* Voice in a DM (feature 4). The compact bar rather than a separate
+                screen — a call in a conversation should not hide the conversation. */}
+            <VoicePanel
+              room={conversationId}
+              scope="DM"
+              variant="bar"
+              title={active?.title ?? 'Call'}
+            />
 
             <div ref={scrollRef} className="flex-1 space-y-2 overflow-y-auto p-4">
               {messages?.map((m) => {

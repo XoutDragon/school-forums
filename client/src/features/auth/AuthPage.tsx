@@ -1,89 +1,151 @@
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { loginSchema, registerSchema } from '@campusconnect/shared';
+import { Navigate } from 'react-router-dom';
+import { convex } from '@/lib/convex';
+import { api } from '@/lib/convexApi';
+import { usePublicQ } from '@/lib/convexHooks';
 import { useAuth } from '@/stores/auth';
 import { useMe } from '@/hooks/useMe';
 import { Button, Field, Input } from '@/components/ui';
+import { IconShield } from '@/components/Icons';
+import { cn } from '@/lib/utils';
 
-type Mode = 'login' | 'register';
+type Mode = 'login' | 'register' | 'admin' | 'reset';
+
+interface InstanceConfig {
+  schoolName: string;
+  shortName: string;
+  allowedEmailDomains: string[];
+  tagline: string | null;
+  supportEmail: string | null;
+  allowSelfRegistration: boolean;
+}
+
+/** Convex surfaces thrown errors as "CODE: sentence". Students should see the sentence. */
+function readableError(err: unknown, fallback: string): string {
+  const raw = err instanceof Error ? err.message : '';
+  const match = /(?:BAD_REQUEST|CONFLICT|UNAUTHORIZED|FORBIDDEN|NOT_FOUND|RATE_LIMITED): (.*)/.exec(
+    raw,
+  );
+  return match?.[1] ?? fallback;
+}
 
 export function AuthPage() {
-  const navigate = useNavigate();
   const me = useMe();
+  const config = usePublicQ<InstanceConfig | null>(api.config.get);
+
   const [mode, setMode] = useState<Mode>('login');
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [formError, setFormError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+
   const signIn = useAuth((s) => s.signIn);
   const registerUser = useAuth((s) => s.register);
 
-  // Redirect if already signed in
-  if (me) {
-    navigate(me.onboardedAt ? '/' : '/onboarding', { replace: true });
-    return null;
+  if (me) return <Navigate to={me.onboardedAt ? '/' : '/onboarding'} replace />;
+
+  const isAdminMode = mode === 'admin';
+  const domainHint = config?.allowedEmailDomains.length
+    ? `Use your ${config.allowedEmailDomains.map((d) => `@${d}`).join(' or ')} address.`
+    : undefined;
+
+  function switchMode(next: Mode) {
+    setMode(next);
+    setErrors({});
+    setFormError(null);
+    setNotice(null);
   }
 
   async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setErrors({});
     setFormError(null);
+    setNotice(null);
 
-    const raw = Object.fromEntries(new FormData(e.currentTarget)) as Record<string, string>;
-    const schema = mode === 'login' ? loginSchema : registerSchema;
-    const parsed = schema.safeParse(raw);
-
-    if (!parsed.success) {
-      setErrors(Object.fromEntries(parsed.error.issues.map((i) => [i.path.join('.'), i.message])));
-      return;
-    }
-
+    const form = new FormData(e.currentTarget);
+    // FormData values are typed loosely; every field below is `required` in the
+    // markup, so an empty string is the only thing a missing one can be.
+    const raw = (key: string) => String(form.get(key) ?? '');
     setBusy(true);
+
     try {
-      if (mode === 'login') {
-        const { email, password } = parsed.data as { email: string; password: string };
-        await signIn(email, password);
-      } else {
-        await registerUser(
-          parsed.data as {
-            email: string;
-            username: string;
-            displayName: string;
-            password: string;
-          },
-        );
-        const { email, password } = parsed.data as { email: string; password: string };
-        await signIn(email, password);
+      if (mode === 'reset') {
+        if (raw('password') !== raw('confirm')) {
+          setErrors({ confirm: 'These do not match.' });
+          return;
+        }
+        await convex.mutation(api.auth.redeemPasswordReset, {
+          code: raw('code'),
+          newPassword: raw('password'),
+        });
+        switchMode('login');
+        setNotice('Password set. Sign in with it now.');
+        return;
       }
-      // Navigation handled by App.tsx via epoch change, but we can also navigate here
-      // to ensure consistency. App.tsx will re-render and route based on onboardedAt status.
+
+      if (mode === 'register') {
+        await registerUser({
+          email: raw('email'),
+          username: raw('username'),
+          displayName: raw('displayName'),
+          password: raw('password'),
+        });
+        return;
+      }
+
+      // login and admin differ only in whether a non-admin account is refused.
+      await signIn(raw('email'), raw('password'), isAdminMode);
     } catch (err) {
-      // Convex surfaces thrown errors as "CODE: message"; show just the sentence.
-      const raw = err instanceof Error ? err.message : '';
-      const match = /(?:BAD_REQUEST|CONFLICT|UNAUTHORIZED|FORBIDDEN|NOT_FOUND): (.*)/.exec(raw);
-      setFormError(match?.[1] ?? 'Could not reach Convex. Is `npx convex dev` running?');
+      setFormError(
+        readableError(err, 'Could not reach the campus server. Is the Convex deployment running?'),
+      );
     } finally {
       setBusy(false);
     }
   }
 
+  const heading =
+    mode === 'login'
+      ? 'Sign in'
+      : mode === 'register'
+        ? 'Create your account'
+        : mode === 'admin'
+          ? 'Administrator sign-in'
+          : 'Set a new password';
+
+  const subheading =
+    mode === 'login'
+      ? (domainHint ?? 'Use your school email.')
+      : mode === 'register'
+        ? 'One account per student. Your email stays private.'
+        : mode === 'admin'
+          ? 'For campus IT staff. Student accounts are refused here.'
+          : 'Paste the reset code your campus IT team gave you.';
+
   return (
     <div className="flex min-h-dvh flex-col bg-ink lg:flex-row">
-      {/* ── Left: the pitch. Set in the display face, tight, with the utility face
-             carrying the institutional detail. */}
-      <section className="relative flex flex-col justify-between overflow-hidden border-b border-edge bg-panel px-7 py-10 lg:w-[46%] lg:border-b-0 lg:border-r lg:px-14 lg:py-14">
+      {/* ── Left: the institution. Quieter than the previous version — this is
+             software the registrar deployed, not a product being pitched. */}
+      <section
+        className={cn(
+          'relative flex flex-col justify-between border-b border-edge px-7 py-10 lg:w-[44%] lg:border-b-0 lg:border-r lg:px-14 lg:py-14',
+          isAdminMode ? 'bg-chalk/[0.03]' : 'bg-panel',
+        )}
+      >
         <div className="flex items-center gap-2.5">
-          <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-accent font-display text-sm font-bold text-white">
-            CC
+          <span className="grid h-9 w-9 place-items-center rounded-lg bg-accent font-display text-sm font-bold text-white">
+            {(config?.shortName ?? 'CC').slice(0, 2).toUpperCase()}
           </span>
-          <span className="font-display text-[1.0625rem] font-semibold tracking-tight text-chalk">
-            CampusConnect
+          <span className="font-display text-[1.0625rem] font-semibold text-chalk">
+            {config?.shortName ?? 'CampusConnect'}
           </span>
         </div>
 
         <div className="my-10 lg:my-0">
-          <p className="eyebrow mb-4">Lakeshore University</p>
+          <p className="eyebrow mb-4">{config?.schoolName ?? 'CampusConnect'}</p>
           <h1 className="max-w-md font-display text-display-lg text-chalk lg:text-display-xl">
-            Everything your campus knows, in one place that outlives the semester.
+            {config?.tagline ??
+              'Everything your campus knows, in one place that outlives the semester.'}
           </h1>
           <p className="mt-5 max-w-sm text-[0.9375rem] leading-relaxed text-dim">
             Clubs, course notes, study groups and the people in them — organised by major and course
@@ -91,111 +153,197 @@ export function AuthPage() {
           </p>
         </div>
 
-        {/* Course codes in the utility face: the app's connective tissue, introduced
-            here before it appears everywhere else. */}
         <ul className="flex flex-wrap gap-1.5">
-          {['CS 2210', 'BIO 2581', 'MATH 1600', 'PSY 2820', 'MME 2273'].map((code) => (
-            <li key={code} className="code-chip">
-              {code}
+          {['Spaces', 'Course hubs', 'Study groups', 'Events', 'Marketplace'].map((label) => (
+            <li key={label} className="code-chip">
+              {label}
             </li>
           ))}
         </ul>
       </section>
 
-      {/* ── Right: the form. Nothing decorative — this screen has one job. */}
+      {/* ── Right: the form. This screen has one job. */}
       <section className="flex flex-1 items-center justify-center px-6 py-12">
         <div className="w-full max-w-sm">
           <div className="mb-7">
-            <h2 className="font-display text-display-md text-chalk">
-              {mode === 'login' ? 'Sign in' : 'Make an account'}
-            </h2>
-            <p className="mt-1 text-sm text-dim">
-              {mode === 'login'
-                ? 'Use your Lakeshore email.'
-                : 'One account per student. Your email stays private.'}
-            </p>
+            {isAdminMode && (
+              <span className="mb-3 inline-flex items-center gap-1.5 rounded-md border border-edge bg-raised px-2 py-1 font-mono text-[0.625rem] uppercase tracking-wider text-dim">
+                <IconShield className="h-3 w-3" />
+                staff access
+              </span>
+            )}
+            <h2 className="font-display text-display-md text-chalk">{heading}</h2>
+            <p className="mt-1 text-sm text-dim">{subheading}</p>
           </div>
 
-          <form onSubmit={onSubmit} className="space-y-4" noValidate>
-            <Field label="Email" error={errors.email}>
-              <Input
-                name="email"
-                type="email"
-                autoComplete="email"
-                placeholder="you@lakeshore.edu"
-                required
-              />
-            </Field>
+          {notice && (
+            <p className="mb-4 rounded-lg border border-courses/40 bg-courses/[0.08] px-3 py-2.5 text-sm text-courses">
+              {notice}
+            </p>
+          )}
 
-            {mode === 'register' && (
+          <form onSubmit={onSubmit} className="space-y-4" noValidate key={mode}>
+            {mode === 'reset' ? (
               <>
-                <Field
-                  label="Username"
-                  hint="Lowercase letters, numbers and underscores."
-                  error={errors.username}
-                >
+                <Field label="Reset code" hint="Three groups of four characters.">
                   <Input
-                    name="username"
-                    autoComplete="username"
-                    placeholder="mayaokafor"
+                    name="code"
+                    required
+                    placeholder="A7KD-2M9P-XQ4T"
+                    className="font-mono tracking-wider"
+                    autoComplete="one-time-code"
+                  />
+                </Field>
+                <Field label="New password" hint="At least 8 characters.">
+                  <Input name="password" type="password" autoComplete="new-password" required />
+                </Field>
+                <Field label="Confirm new password" error={errors.confirm}>
+                  <Input name="confirm" type="password" autoComplete="new-password" required />
+                </Field>
+              </>
+            ) : (
+              <>
+                <Field label="Email" hint={mode === 'register' ? domainHint : undefined}>
+                  <Input
+                    name="email"
+                    type="email"
+                    autoComplete="email"
+                    placeholder={
+                      config?.allowedEmailDomains[0]
+                        ? `you@${config.allowedEmailDomains[0]}`
+                        : 'you@school.edu'
+                    }
                     required
                   />
                 </Field>
-                <Field label="Display name" error={errors.displayName}>
+
+                {mode === 'register' && (
+                  <>
+                    <Field label="Username" hint="Lowercase letters, numbers and underscores.">
+                      <Input
+                        name="username"
+                        autoComplete="username"
+                        placeholder="mayaokafor"
+                        required
+                      />
+                    </Field>
+                    <Field label="Display name">
+                      <Input
+                        name="displayName"
+                        autoComplete="name"
+                        placeholder="Maya Okafor"
+                        required
+                      />
+                    </Field>
+                  </>
+                )}
+
+                <Field
+                  label="Password"
+                  hint={mode === 'register' ? 'At least 8 characters.' : undefined}
+                >
                   <Input
-                    name="displayName"
-                    autoComplete="name"
-                    placeholder="Maya Okafor"
+                    name="password"
+                    type="password"
+                    autoComplete={mode === 'register' ? 'new-password' : 'current-password'}
                     required
                   />
                 </Field>
               </>
             )}
 
-            <Field
-              label="Password"
-              hint={mode === 'register' ? 'At least 8 characters.' : undefined}
-              error={errors.password}
-            >
-              <Input
-                name="password"
-                type="password"
-                autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
-                required
-              />
-            </Field>
-
             {formError && (
               <p
                 role="alert"
-                className="rounded-lg border border-events/30 bg-events/10 px-3 py-2 text-sm text-events"
+                className="rounded-lg border border-events/40 bg-events/[0.07] px-3 py-2.5 text-sm text-events"
               >
                 {formError}
               </p>
             )}
 
             <Button type="submit" size="lg" loading={busy} className="w-full">
-              {mode === 'login' ? 'Sign in' : 'Create account'}
+              {mode === 'register'
+                ? 'Create account'
+                : mode === 'reset'
+                  ? 'Set password'
+                  : 'Sign in'}
             </Button>
           </form>
 
-          <p className="mt-6 text-center text-sm text-dim">
-            {mode === 'login' ? 'New here?' : 'Already have an account?'}{' '}
-            <button
-              onClick={() => {
-                setMode(mode === 'login' ? 'register' : 'login');
-                setErrors({});
-                setFormError(null);
-              }}
-              className="font-medium text-accent-lift hover:underline"
-            >
-              {mode === 'login' ? 'Create an account' : 'Sign in'}
-            </button>
-          </p>
+          {mode !== 'reset' && (
+            <p className="mt-6 text-center text-sm text-dim">
+              {mode === 'register' ? (
+                <>
+                  Already have an account?{' '}
+                  <button
+                    onClick={() => switchMode('login')}
+                    className="font-medium text-accent-lift hover:underline"
+                  >
+                    Sign in
+                  </button>
+                </>
+              ) : config?.allowSelfRegistration === false ? (
+                <>Accounts are created by campus IT.</>
+              ) : (
+                <>
+                  New here?{' '}
+                  <button
+                    onClick={() => switchMode('register')}
+                    className="font-medium text-accent-lift hover:underline"
+                  >
+                    Create an account
+                  </button>
+                </>
+              )}
+            </p>
+          )}
 
-          <p className="mt-8 rounded-lg border border-edge bg-raised/50 px-3 py-2.5 text-center font-mono text-[0.6875rem] leading-relaxed text-faint">
-            Seeded demo · admin@lakeshore.edu · password123
-          </p>
+          {/* ── The small print. The administrator door lives here deliberately: it
+                 is a staff entrance, so it is findable rather than advertised. */}
+          <div className="mt-8 flex flex-wrap items-center justify-center gap-x-3 gap-y-1.5 border-t border-edge pt-5 text-xs text-faint">
+            {isAdminMode || mode === 'reset' ? (
+              <button
+                onClick={() => switchMode('login')}
+                className="hover:text-dim hover:underline"
+              >
+                Back to student sign-in
+              </button>
+            ) : (
+              <button
+                onClick={() => switchMode('admin')}
+                className="hover:text-dim hover:underline"
+              >
+                Administrator sign-in
+              </button>
+            )}
+            <span aria-hidden className="text-edge">
+              ·
+            </span>
+            <button onClick={() => switchMode('reset')} className="hover:text-dim hover:underline">
+              I have a reset code
+            </button>
+            <span aria-hidden className="text-edge">
+              ·
+            </span>
+            <a href="/privacy" className="hover:text-dim hover:underline">
+              Privacy
+            </a>
+            <span aria-hidden className="text-edge">
+              ·
+            </span>
+            <a href="/terms" className="hover:text-dim hover:underline">
+              Terms
+            </a>
+          </div>
+
+          {config?.supportEmail && (
+            <p className="mt-4 text-center text-xs text-faint">
+              Locked out?{' '}
+              <a href={`mailto:${config.supportEmail}`} className="text-dim hover:underline">
+                {config.supportEmail}
+              </a>
+            </p>
+          )}
         </div>
       </section>
     </div>

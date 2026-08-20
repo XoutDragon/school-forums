@@ -12,11 +12,16 @@ import { cn, hueFor, initials } from '@/lib/utils';
 type Variant = 'primary' | 'secondary' | 'ghost' | 'danger';
 type Size = 'sm' | 'md' | 'lg';
 
+/**
+ * Teams' button ladder: one solid brand button, an outlined default beside it, and
+ * a bare text button for tertiary actions. No lift, no shadow — the state change is
+ * colour, which is what both reference products do.
+ */
 const VARIANTS: Record<Variant, string> = {
-  primary: 'bg-accent text-white hover:bg-accent-lift active:translate-y-px',
-  secondary: 'border border-edge bg-raised text-chalk hover:border-faint/60 hover:bg-raised/70',
+  primary: 'bg-accent text-white hover:bg-accent-lift',
+  secondary: 'border border-edge bg-panel text-chalk hover:bg-raised',
   ghost: 'text-dim hover:bg-raised hover:text-chalk',
-  danger: 'border border-events/40 bg-events/10 text-events hover:bg-events/20',
+  danger: 'border border-events/40 bg-transparent text-events hover:bg-events/10',
 };
 
 const SIZES: Record<Size, string> = {

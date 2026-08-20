@@ -15,3 +15,11 @@ Thumbs.db
 !.vscode/extensions.json
 .claude/
 convex/_generated/
+
+# TypeScript incremental build cache
+*.tsbuildinfo
+
+# Leftovers from the pre-Convex Express/Prisma build. The directory was removed
+# from the repo in the migration; these files survive locally and must not come back
+# (server/.env and server/dev.db in particular).
+server/

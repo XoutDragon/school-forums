@@ -1,3 +1,7 @@
+/* eslint-disable @typescript-eslint/no-explicit-any --
+   A seed script threads ids through forty tables and a dozen intermediate arrays.
+   Typing those precisely would mean re-declaring most of the schema here to
+   describe data that is thrown away at the end of the run. */
 import { mutation } from './_generated/server';
 
 // ── Constants and helpers ──────────────────────────────────────────────────
@@ -58,7 +62,7 @@ function currentTerm(now = new Date()): string {
 const TERM = currentTerm();
 const LAST_TERM = `${Number(TERM.slice(0, 4)) - 1}${TERM.slice(4)}`;
 
-const hoursAgo = (h: number) => Date.now() - h * 3600_000;
+const _hoursAgo = (h: number) => Date.now() - h * 3600_000;
 const daysOut = (d: number, hour = 18) => {
   const date = new Date();
   date.setDate(date.getDate() + d);
@@ -67,18 +71,54 @@ const daysOut = (d: number, hour = 18) => {
 };
 
 const MAJORS = [
-  ['Computer Science', 'Faculty of Science', 'Algorithms, systems, and the software that runs on them.'],
+  [
+    'Computer Science',
+    'Faculty of Science',
+    'Algorithms, systems, and the software that runs on them.',
+  ],
   ['Biology', 'Faculty of Science', 'Molecules to ecosystems, with a lot of lab hours in between.'],
-  ['Chemistry', 'Faculty of Science', 'Reactions, structures, and the fume hood you will come to know.'],
+  [
+    'Chemistry',
+    'Faculty of Science',
+    'Reactions, structures, and the fume hood you will come to know.',
+  ],
   ['Mathematics', 'Faculty of Science', 'Proof-first. Bring patience and a lot of scrap paper.'],
-  ['Mechanical Engineering', 'Faculty of Engineering', 'Statics, dynamics, thermo, and a capstone that eats your term.'],
-  ['Software Engineering', 'Faculty of Engineering', 'Building systems that other people have to maintain.'],
-  ['Civil Engineering', 'Faculty of Engineering', 'Structures, transport, and the built environment.'],
-  ['Psychology', 'Faculty of Social Science', 'Behaviour, cognition, and a statistics course you did not expect.'],
+  [
+    'Mechanical Engineering',
+    'Faculty of Engineering',
+    'Statics, dynamics, thermo, and a capstone that eats your term.',
+  ],
+  [
+    'Software Engineering',
+    'Faculty of Engineering',
+    'Building systems that other people have to maintain.',
+  ],
+  [
+    'Civil Engineering',
+    'Faculty of Engineering',
+    'Structures, transport, and the built environment.',
+  ],
+  [
+    'Psychology',
+    'Faculty of Social Science',
+    'Behaviour, cognition, and a statistics course you did not expect.',
+  ],
   ['Economics', 'Faculty of Social Science', 'Models of choice under constraint, at every scale.'],
-  ['Political Science', 'Faculty of Social Science', 'Power, institutions, and how they actually behave.'],
-  ['English Literature', 'Faculty of Arts & Humanities', 'Close reading, long reading, and arguing about both.'],
-  ['Visual Arts', 'Faculty of Arts & Humanities', 'Studio practice, critique, and building a body of work.'],
+  [
+    'Political Science',
+    'Faculty of Social Science',
+    'Power, institutions, and how they actually behave.',
+  ],
+  [
+    'English Literature',
+    'Faculty of Arts & Humanities',
+    'Close reading, long reading, and arguing about both.',
+  ],
+  [
+    'Visual Arts',
+    'Faculty of Arts & Humanities',
+    'Studio practice, critique, and building a body of work.',
+  ],
 ] as const;
 
 const COURSES: [string, string, string, number][] = [
@@ -159,37 +199,258 @@ const INTERESTS: [string, string][] = [
 ];
 
 const CLUBS: [string, string, string, string[], boolean, string][] = [
-  ['Lakeshore Robotics', 'ACADEMIC', 'We build competition robots and lose sleep over gearboxes. Beginners welcome — most of us started knowing nothing.', ['making', 'technical', 'competitive', 'weeknight'], true, 'Tuesdays 7pm, Engineering Annex B12'],
-  ['Debate Union', 'ACADEMIC', 'British Parliamentary format, weekly practice rounds, and three tournaments a term.', ['discussion', 'academic', 'competitive', 'weeknight'], true, 'Wednesdays 6:30pm, Social Science 2050'],
-  ['Lakeshore Outdoors Club', 'SPORTS', 'Day hikes, weekend camping, and one very ambitious canoe trip per year. Gear lending library included.', ['outdoors', 'weekend', 'casual', 'sport'], true, 'Trips posted biweekly, Saturdays'],
-  ['Improv Collective', 'ARTS', 'Short-form games on Thursdays, a show at the end of every term. No experience, no auditions.', ['performance', 'creative', 'casual', 'weeknight'], true, 'Thursdays 8pm, Arts Studio 1'],
-  ['Lakeshore Coding Society', 'ACADEMIC', 'Hack nights, interview prep, and a hosted project showcase in March.', ['making', 'technical', 'career', 'weeknight'], true, 'Mondays 7pm, Science Building 3010'],
-  ['Badminton Club', 'SPORTS', 'Open courts twice a week plus a ladder for anyone who wants one.', ['sport', 'casual', 'weeknight'], false, 'Mon/Thu 8pm, Athletic Centre Court 3'],
-  ['Film Society', 'ARTS', 'A screening a week, chosen by member vote, followed by arguing in the lobby.', ['creative', 'discussion', 'weeknight', 'social'], false, 'Fridays 7pm, Lecture Hall A'],
-  ['Habitat Volunteers', 'VOLUNTEER', 'Monthly builds with the local chapter plus a spring fundraising drive.', ['volunteer', 'service', 'weekend', 'outdoors'], false, 'One Saturday a month'],
-  ['Pre-Med Society', 'PROFESSIONAL', 'MCAT study groups, application workshops, and panels with students who got in.', ['academic', 'career', 'discussion'], false, 'Biweekly Wednesdays, Health Sciences 240'],
-  ['Lakeshore Consulting Group', 'PROFESSIONAL', 'Pro-bono casework for campus organisations. Case prep every Sunday.', ['career', 'discussion', 'competitive'], true, 'Sundays 2pm, Business 1220'],
-  ['Tabletop Guild', 'GAMING', 'Board games Fridays, three ongoing D&D tables, and a shelf that keeps growing.', ['casual', 'social', 'weeknight', 'small'], false, 'Fridays 6pm, Student Centre Lounge'],
-  ['Esports Association', 'GAMING', 'Varsity rosters plus open play nights for everyone else.', ['competitive', 'social', 'weeknight'], false, 'Open play Wednesdays, Gaming Lab'],
-  ['Interfaith Council', 'RELIGIOUS', 'Shared meals and conversation across traditions. Everyone welcome, including nobody in particular.', ['discussion', 'social', 'service'], false, 'Alternate Tuesdays, Chapel Common Room'],
-  ['Lakeshore Choir', 'ARTS', 'Four-part repertoire, two concerts a year, no audition for the open ensemble.', ['performance', 'creative', 'weeknight', 'large'], true, 'Tuesdays 7pm, Music Hall'],
-  ['International Students Association', 'CULTURAL', 'Orientation buddies, culture nights, and a very good potluck calendar.', ['social', 'large', 'service', 'weekend'], true, 'Monthly culture nights'],
+  [
+    'Lakeshore Robotics',
+    'ACADEMIC',
+    'We build competition robots and lose sleep over gearboxes. Beginners welcome — most of us started knowing nothing.',
+    ['making', 'technical', 'competitive', 'weeknight'],
+    true,
+    'Tuesdays 7pm, Engineering Annex B12',
+  ],
+  [
+    'Debate Union',
+    'ACADEMIC',
+    'British Parliamentary format, weekly practice rounds, and three tournaments a term.',
+    ['discussion', 'academic', 'competitive', 'weeknight'],
+    true,
+    'Wednesdays 6:30pm, Social Science 2050',
+  ],
+  [
+    'Lakeshore Outdoors Club',
+    'SPORTS',
+    'Day hikes, weekend camping, and one very ambitious canoe trip per year. Gear lending library included.',
+    ['outdoors', 'weekend', 'casual', 'sport'],
+    true,
+    'Trips posted biweekly, Saturdays',
+  ],
+  [
+    'Improv Collective',
+    'ARTS',
+    'Short-form games on Thursdays, a show at the end of every term. No experience, no auditions.',
+    ['performance', 'creative', 'casual', 'weeknight'],
+    true,
+    'Thursdays 8pm, Arts Studio 1',
+  ],
+  [
+    'Lakeshore Coding Society',
+    'ACADEMIC',
+    'Hack nights, interview prep, and a hosted project showcase in March.',
+    ['making', 'technical', 'career', 'weeknight'],
+    true,
+    'Mondays 7pm, Science Building 3010',
+  ],
+  [
+    'Badminton Club',
+    'SPORTS',
+    'Open courts twice a week plus a ladder for anyone who wants one.',
+    ['sport', 'casual', 'weeknight'],
+    false,
+    'Mon/Thu 8pm, Athletic Centre Court 3',
+  ],
+  [
+    'Film Society',
+    'ARTS',
+    'A screening a week, chosen by member vote, followed by arguing in the lobby.',
+    ['creative', 'discussion', 'weeknight', 'social'],
+    false,
+    'Fridays 7pm, Lecture Hall A',
+  ],
+  [
+    'Habitat Volunteers',
+    'VOLUNTEER',
+    'Monthly builds with the local chapter plus a spring fundraising drive.',
+    ['volunteer', 'service', 'weekend', 'outdoors'],
+    false,
+    'One Saturday a month',
+  ],
+  [
+    'Pre-Med Society',
+    'PROFESSIONAL',
+    'MCAT study groups, application workshops, and panels with students who got in.',
+    ['academic', 'career', 'discussion'],
+    false,
+    'Biweekly Wednesdays, Health Sciences 240',
+  ],
+  [
+    'Lakeshore Consulting Group',
+    'PROFESSIONAL',
+    'Pro-bono casework for campus organisations. Case prep every Sunday.',
+    ['career', 'discussion', 'competitive'],
+    true,
+    'Sundays 2pm, Business 1220',
+  ],
+  [
+    'Tabletop Guild',
+    'GAMING',
+    'Board games Fridays, three ongoing D&D tables, and a shelf that keeps growing.',
+    ['casual', 'social', 'weeknight', 'small'],
+    false,
+    'Fridays 6pm, Student Centre Lounge',
+  ],
+  [
+    'Esports Association',
+    'GAMING',
+    'Varsity rosters plus open play nights for everyone else.',
+    ['competitive', 'social', 'weeknight'],
+    false,
+    'Open play Wednesdays, Gaming Lab',
+  ],
+  [
+    'Interfaith Council',
+    'RELIGIOUS',
+    'Shared meals and conversation across traditions. Everyone welcome, including nobody in particular.',
+    ['discussion', 'social', 'service'],
+    false,
+    'Alternate Tuesdays, Chapel Common Room',
+  ],
+  [
+    'Lakeshore Choir',
+    'ARTS',
+    'Four-part repertoire, two concerts a year, no audition for the open ensemble.',
+    ['performance', 'creative', 'weeknight', 'large'],
+    true,
+    'Tuesdays 7pm, Music Hall',
+  ],
+  [
+    'International Students Association',
+    'CULTURAL',
+    'Orientation buddies, culture nights, and a very good potluck calendar.',
+    ['social', 'large', 'service', 'weekend'],
+    true,
+    'Monthly culture nights',
+  ],
 ];
 
 const FIRST_NAMES = [
-  'Maya', 'Arjun', 'Sofia', 'Liam', 'Priya', 'Noah', 'Chloe', 'Omar', 'Hana', 'Ethan', 'Zara', 'Lucas', 'Amara', 'Felix', 'Ingrid', 'Tomas',
-  'Yuki', 'Daniel', 'Nadia', 'Isaac', 'Leila', 'Owen', 'Mei', 'Gabriel', 'Farah', 'Henrik', 'Rosa', 'Kwame', 'Elena', 'Jonas', 'Aisha',
-  'Marco', 'Sana', 'Theo', 'Bianca', 'Rahul', 'Clara', 'Diego', 'Anika', 'Simon', 'Lucia', 'Yusuf', 'Ivy', 'Mateo', 'Nora', 'Elias',
-  'Tara', 'Sebastian', 'Jia', 'Andre', 'Fiona', 'Kenji', 'Camila', 'Viktor', 'Layla', 'Anders', 'Ruby', 'Hassan', 'Greta', 'Milo',
+  'Maya',
+  'Arjun',
+  'Sofia',
+  'Liam',
+  'Priya',
+  'Noah',
+  'Chloe',
+  'Omar',
+  'Hana',
+  'Ethan',
+  'Zara',
+  'Lucas',
+  'Amara',
+  'Felix',
+  'Ingrid',
+  'Tomas',
+  'Yuki',
+  'Daniel',
+  'Nadia',
+  'Isaac',
+  'Leila',
+  'Owen',
+  'Mei',
+  'Gabriel',
+  'Farah',
+  'Henrik',
+  'Rosa',
+  'Kwame',
+  'Elena',
+  'Jonas',
+  'Aisha',
+  'Marco',
+  'Sana',
+  'Theo',
+  'Bianca',
+  'Rahul',
+  'Clara',
+  'Diego',
+  'Anika',
+  'Simon',
+  'Lucia',
+  'Yusuf',
+  'Ivy',
+  'Mateo',
+  'Nora',
+  'Elias',
+  'Tara',
+  'Sebastian',
+  'Jia',
+  'Andre',
+  'Fiona',
+  'Kenji',
+  'Camila',
+  'Viktor',
+  'Layla',
+  'Anders',
+  'Ruby',
+  'Hassan',
+  'Greta',
+  'Milo',
 ];
 const LAST_NAMES = [
-  'Okafor', 'Nakamura', 'Silva', 'Brennan', 'Sharma', 'Whitfield', 'Dubois', 'Haddad', 'Kimura', 'Vance', 'Ahmadi', 'Moreau', 'Diallo',
-  'Lindqvist', 'Sorensen', 'Novak', 'Tanaka', 'Freeman', 'Petrov', 'Grady', 'Rahimi', 'Callahan', 'Zhou', 'Ferreira', 'Nasser',
-  'Bergstrom', 'Alvarez', 'Mensah', 'Papadakis', 'Holm', 'Osei', 'Ricci', 'Iqbal', 'Weaver', 'Costa', 'Menon', 'Novotny', 'Reyes',
-  'Bhatt', 'Lindgren', 'Marchetti', 'Demir', 'Fairbanks', 'Ocampo', 'Sullivan', 'Kovac', 'Sandhu', 'Almeida', 'Chen', 'Barros', 'Doyle',
-  'Watanabe', 'Rojas', 'Marek', 'Karim', 'Eriksen', 'Ashford', 'Mahmoud', 'Lindholm', 'Fontaine',
+  'Okafor',
+  'Nakamura',
+  'Silva',
+  'Brennan',
+  'Sharma',
+  'Whitfield',
+  'Dubois',
+  'Haddad',
+  'Kimura',
+  'Vance',
+  'Ahmadi',
+  'Moreau',
+  'Diallo',
+  'Lindqvist',
+  'Sorensen',
+  'Novak',
+  'Tanaka',
+  'Freeman',
+  'Petrov',
+  'Grady',
+  'Rahimi',
+  'Callahan',
+  'Zhou',
+  'Ferreira',
+  'Nasser',
+  'Bergstrom',
+  'Alvarez',
+  'Mensah',
+  'Papadakis',
+  'Holm',
+  'Osei',
+  'Ricci',
+  'Iqbal',
+  'Weaver',
+  'Costa',
+  'Menon',
+  'Novotny',
+  'Reyes',
+  'Bhatt',
+  'Lindgren',
+  'Marchetti',
+  'Demir',
+  'Fairbanks',
+  'Ocampo',
+  'Sullivan',
+  'Kovac',
+  'Sandhu',
+  'Almeida',
+  'Chen',
+  'Barros',
+  'Doyle',
+  'Watanabe',
+  'Rojas',
+  'Marek',
+  'Karim',
+  'Eriksen',
+  'Ashford',
+  'Mahmoud',
+  'Lindholm',
+  'Fontaine',
 ];
-const YEARS: ('FRESHMAN' | 'SOPHOMORE' | 'JUNIOR' | 'SENIOR' | 'GRAD')[] = ['FRESHMAN', 'SOPHOMORE', 'JUNIOR', 'SENIOR'];
+const YEARS: ('FRESHMAN' | 'SOPHOMORE' | 'JUNIOR' | 'SENIOR' | 'GRAD')[] = [
+  'FRESHMAN',
+  'SOPHOMORE',
+  'JUNIOR',
+  'SENIOR',
+];
 const PRONOUNS = ['she/her', 'he/him', 'they/them', null, null, null];
 
 const MAJOR_CHANNELS: [string, string][] = [
@@ -559,11 +820,13 @@ async function seedChannel(
 
     if (chance(0.35)) {
       for (const reactor of pickN(memberIds, int(1, 4))) {
-        await ctx.db.insert('reactions', {
-          messageId: msg,
-          userId: reactor,
-          emoji: pick(EMOJI),
-        }).catch(() => undefined);
+        await ctx.db
+          .insert('reactions', {
+            messageId: msg,
+            userId: reactor,
+            emoji: pick(EMOJI),
+          })
+          .catch(() => undefined);
       }
     }
   }
@@ -576,6 +839,12 @@ export const run = mutation(async (ctx) => {
   // ── Cleanup: Delete all existing seed data ──────────────────────────────
   // This makes the seed idempotent - safe to run multiple times
   const tables = [
+    'passwordResets',
+    'voiceSignals',
+    'voiceParticipants',
+    'auditLogs',
+    'instanceConfig',
+    'spaceRoles',
     'userBadges',
     'badges',
     'notifications',
@@ -670,7 +939,16 @@ export const run = mutation(async (ctx) => {
     const id = await ctx.db.insert('clubs', {
       name,
       slug: slugify(name),
-      category: category as 'ACADEMIC' | 'SPORTS' | 'ARTS' | 'GAMING' | 'CULTURAL' | 'PROFESSIONAL' | 'VOLUNTEER' | 'RELIGIOUS' | 'OTHER',
+      category: category as
+        | 'ACADEMIC'
+        | 'SPORTS'
+        | 'ARTS'
+        | 'GAMING'
+        | 'CULTURAL'
+        | 'PROFESSIONAL'
+        | 'VOLUNTEER'
+        | 'RELIGIOUS'
+        | 'OTHER',
       description,
       isRecruiting,
       meetingInfo,
@@ -744,7 +1022,8 @@ export const run = mutation(async (ctx) => {
       lastSeenAt: now - int(0, 72) * 3600000,
       settings: {
         theme: 'dark',
-        dmPrivacy: pick(['EVERYONE', 'EVERYONE', 'SHARED_SPACE_ONLY']) as 'EVERYONE' | 'SHARED_SPACE_ONLY' | 'NOBODY',
+        dmPrivacy: pick(['EVERYONE', 'EVERYONE', 'SHARED_SPACE_ONLY']) as
+          'EVERYONE' | 'SHARED_SPACE_ONLY' | 'NOBODY',
         discoverable: chance(0.85),
         showCourses: true,
         showRealName: true,
@@ -757,32 +1036,38 @@ export const run = mutation(async (ctx) => {
 
     // Add interests
     for (const interest of pickN(interests, int(3, 6))) {
-      await ctx.db.insert('userInterests', {
-        userId,
-        interestId: interest.id,
-      }).catch(() => undefined);
+      await ctx.db
+        .insert('userInterests', {
+          userId,
+          interestId: interest.id,
+        })
+        .catch(() => undefined);
     }
 
     // Add courses for current term
     const majorCourses = courses.filter((c) => c.majorId === major.id);
     const enrolled = pickN(majorCourses.length >= 3 ? majorCourses : courses, int(3, 5));
     for (const course of enrolled) {
-      await ctx.db.insert('userCourses', {
-        userId,
-        courseId: course.id,
-        term: TERM,
-        status: 'TAKING',
-      }).catch(() => undefined);
+      await ctx.db
+        .insert('userCourses', {
+          userId,
+          courseId: course.id,
+          term: TERM,
+          status: 'TAKING',
+        })
+        .catch(() => undefined);
     }
 
     // Add previous term history
     for (const course of pickN(courses, 2)) {
-      await ctx.db.insert('userCourses', {
-        userId,
-        courseId: course.id,
-        term: LAST_TERM,
-        status: 'COMPLETED',
-      }).catch(() => undefined);
+      await ctx.db
+        .insert('userCourses', {
+          userId,
+          courseId: course.id,
+          term: LAST_TERM,
+          status: 'COMPLETED',
+        })
+        .catch(() => undefined);
     }
   }
   console.log(`  ✓ ${userIds.length} users (1 admin)`);
@@ -799,6 +1084,8 @@ export const run = mutation(async (ctx) => {
       visibility: 'PUBLIC',
       ownerId: adminId,
       linkedMajorId: major.id,
+      createdById: adminId,
+      publishedAt: now,
     });
 
     // Add channels
@@ -865,6 +1152,8 @@ export const run = mutation(async (ctx) => {
       visibility: 'PUBLIC',
       ownerId: adminId,
       linkedCourseId: courseId as any,
+      createdById: adminId,
+      publishedAt: now,
     });
 
     const channels: any[] = [];
@@ -881,21 +1170,25 @@ export const run = mutation(async (ctx) => {
         position: i,
         isDefault: i === 0,
         topic:
-          name === 'assignments' ? 'Deadlines and clarifications. No solutions.' :
-          name === 'study-hall' ? 'Silent co-working. Camera off, mic off.' :
-          undefined,
+          name === 'assignments'
+            ? 'Deadlines and clarifications. No solutions.'
+            : name === 'study-hall'
+              ? 'Silent co-working. Camera off, mic off.'
+              : undefined,
       });
       channels.push({ id: ch, name });
     }
 
     // Add members
     for (const userId of memberIds) {
-      await ctx.db.insert('spaceMembers', {
-        spaceId: space,
-        userId: userId as any,
-        role: 'MEMBER',
-        joinedAt: now,
-      }).catch(() => undefined);
+      await ctx.db
+        .insert('spaceMembers', {
+          spaceId: space,
+          userId: userId as any,
+          role: 'MEMBER',
+          joinedAt: now,
+        })
+        .catch(() => undefined);
     }
     await ctx.db.insert('spaceMembers', {
       spaceId: space,
@@ -932,6 +1225,8 @@ export const run = mutation(async (ctx) => {
       visibility: 'PUBLIC',
       ownerId: memberIds[0]!,
       linkedClubId: club.id,
+      createdById: memberIds[0]!,
+      publishedAt: now,
     });
 
     const channels: any[] = [];
@@ -953,12 +1248,14 @@ export const run = mutation(async (ctx) => {
 
     // Add members
     for (let i = 0; i < memberIds.length; i++) {
-      await ctx.db.insert('spaceMembers', {
-        spaceId: space,
-        userId: memberIds[i]!,
-        role: i === 0 ? 'OWNER' : i < 3 ? 'ADMIN' : 'MEMBER',
-        joinedAt: now,
-      }).catch(() => undefined);
+      await ctx.db
+        .insert('spaceMembers', {
+          spaceId: space,
+          userId: memberIds[i]!,
+          role: i === 0 ? 'OWNER' : i < 3 ? 'ADMIN' : 'MEMBER',
+          joinedAt: now,
+        })
+        .catch(() => undefined);
     }
 
     clubSpaceData.push({ id: space, channels, memberIds, ownerId: memberIds[0]! });
@@ -969,7 +1266,7 @@ export const run = mutation(async (ctx) => {
   let messageCount = 0;
 
   // Major spaces chat
-  for (const { id: spaceId, channels, memberIds } of majorSpaceData) {
+  for (const { channels, memberIds } of majorSpaceData) {
     for (const { id: channelId, name, type } of channels) {
       if (type === 'VOICE_STUB' || type === 'RESOURCES') continue;
       const msgs = await seedChannel(ctx, channelId, memberIds, name === 'general' ? 14 : 6, {
@@ -981,7 +1278,7 @@ export const run = mutation(async (ctx) => {
       if (name === 'general' && msgs.length > 3) {
         const root = msgs[msgs.length - 3]!;
         for (let i = 0; i < 3; i++) {
-          const replyMsg = await ctx.db.insert('messages', {
+          await ctx.db.insert('messages', {
             channelId,
             authorId: pick(memberIds),
             content: pick(REPLIES),
@@ -1001,7 +1298,7 @@ export const run = mutation(async (ctx) => {
   }
 
   // Course spaces chat
-  for (const { id: spaceId, channels, memberIds } of courseSpaceData) {
+  for (const { channels, memberIds } of courseSpaceData) {
     for (const { id: channelId, name } of channels) {
       if (name === 'study-hall' || name === 'resources') continue;
       const msgs = await seedChannel(ctx, channelId, memberIds, int(8, 16));
@@ -1010,7 +1307,7 @@ export const run = mutation(async (ctx) => {
   }
 
   // Club spaces chat
-  for (const { id: spaceId, channels, memberIds, ownerId } of clubSpaceData) {
+  for (const { channels, memberIds, ownerId } of clubSpaceData) {
     for (const { id: channelId, name } of channels) {
       if (name === 'announcements') {
         const msgs = await seedChannel(ctx, channelId, memberIds, 3, {
@@ -1033,19 +1330,21 @@ export const run = mutation(async (ctx) => {
     const reviewers = pickN(userIds.slice(1), hasSpace ? int(3, 5) : int(1, 2));
     for (const author of reviewers) {
       const term = chance(0.5) ? TERM : LAST_TERM;
-      await ctx.db.insert('courseReviews', {
-        courseId: course.id,
-        authorId: author,
-        term,
-        profName: pick(PROFS),
-        difficulty: int(2, 5),
-        workload: int(2, 5),
-        rating: int(2, 5),
-        tips: pick(TIPS),
-        wouldRecommend: chance(0.7),
-        showName: chance(0.3),
-        helpfulCount: int(0, 24),
-      }).catch(() => undefined);
+      await ctx.db
+        .insert('courseReviews', {
+          courseId: course.id,
+          authorId: author,
+          term,
+          profName: pick(PROFS),
+          difficulty: int(2, 5),
+          workload: int(2, 5),
+          rating: int(2, 5),
+          tips: pick(TIPS),
+          wouldRecommend: chance(0.7),
+          showName: chance(0.3),
+          helpfulCount: int(0, 24),
+        })
+        .catch(() => undefined);
       reviewCount++;
     }
   }
@@ -1087,24 +1386,28 @@ export const run = mutation(async (ctx) => {
     let score = 0;
     for (const voter of voters) {
       const value = chance(0.85) ? 1 : -1;
-      await ctx.db.insert('resourceVotes', {
-        resourceId: resource,
-        userId: voter,
-        value,
-      }).catch(() => undefined);
+      await ctx.db
+        .insert('resourceVotes', {
+          resourceId: resource,
+          userId: voter,
+          value,
+        })
+        .catch(() => undefined);
       score += value;
     }
-    await ctx.db.insert('resources', {
-      courseId: course.id,
-      uploaderId: uploader,
-      title,
-      type: type as any,
-      term,
-      linkUrl,
-      description: 'Cleaned up and re-uploaded. Corrections welcome.',
-      downloadCount: int(0, 90),
-      score,
-    }).catch(() => undefined);
+    await ctx.db
+      .insert('resources', {
+        courseId: course.id,
+        uploaderId: uploader,
+        title,
+        type: type as any,
+        term,
+        linkUrl,
+        description: 'Cleaned up and re-uploaded. Corrections welcome.',
+        downloadCount: int(0, 90),
+        score,
+      })
+      .catch(() => undefined);
   }
   console.log(`  ✓ ${resourceCount} resources`);
 
@@ -1151,36 +1454,40 @@ export const run = mutation(async (ctx) => {
       shouldFill ? maxSize - 1 : int(1, Math.max(1, maxSize - 3)),
     );
 
-    const groupId = await ctx.db.insert('studyGroups', {
-      courseId: course.id as any,
-      ownerId: owner as any,
-      maxSize,
-      name: `${course.code} ${pick(['problem sets', 'midterm prep', 'weekly review', 'lab partners'])}`,
-      description: pick([
-        'Meeting in the library, working through the problem set together. Cameras optional if we go online.',
-        'Two hours, no phones, then we compare answers. Bring your own attempt.',
-        'Casual — we mostly keep each other honest about starting early.',
-      ]),
-      meetingType: pick(['IN_PERSON', 'ONLINE', 'HYBRID']),
-      schedule: randomAvailability(),
-      locationHint: pick([
-        'Weldon 4th floor',
-        'Science Building study rooms',
-        'Discord / online',
-        'Student Centre tables',
-      ]),
-      status: shouldFill ? 'FULL' : 'OPEN',
-    }).catch(() => undefined);
+    const groupId = await ctx.db
+      .insert('studyGroups', {
+        courseId: course.id as any,
+        ownerId: owner as any,
+        maxSize,
+        name: `${course.code} ${pick(['problem sets', 'midterm prep', 'weekly review', 'lab partners'])}`,
+        description: pick([
+          'Meeting in the library, working through the problem set together. Cameras optional if we go online.',
+          'Two hours, no phones, then we compare answers. Bring your own attempt.',
+          'Casual — we mostly keep each other honest about starting early.',
+        ]),
+        meetingType: pick(['IN_PERSON', 'ONLINE', 'HYBRID']),
+        schedule: randomAvailability(),
+        locationHint: pick([
+          'Weldon 4th floor',
+          'Science Building study rooms',
+          'Discord / online',
+          'Student Centre tables',
+        ]),
+        status: shouldFill ? 'FULL' : 'OPEN',
+      })
+      .catch(() => undefined);
 
     if (groupId) groupCount++;
 
     // Add members
     for (const member of memberPool) {
-      await ctx.db.insert('studyGroupMembers', {
-        groupId: groupId as any,
-        userId: member as any,
-        status: 'MEMBER',
-      }).catch(() => undefined);
+      await ctx.db
+        .insert('studyGroupMembers', {
+          groupId: groupId as any,
+          userId: member as any,
+          status: 'MEMBER',
+        })
+        .catch(() => undefined);
     }
   }
   console.log(`  ✓ ${groupCount} study groups`);
@@ -1188,19 +1495,21 @@ export const run = mutation(async (ctx) => {
   // ── Buddy profiles ───────────────────────────────────────────────────────
   const buddyProfileCount = 34;
   for (const student of pickN(userIds.slice(1), buddyProfileCount)) {
-    await ctx.db.insert('buddyProfiles', {
-      userId: student,
-      isActive: true,
-      lookingFor: pickN(LOOKING_FOR, int(1, 3)),
-      availability: randomAvailability(),
-      note: chance(0.5)
-        ? pick([
-            'Prefer working in silence and then comparing notes after.',
-            'Happy to meet in person or online, whichever is easier.',
-            'Looking for someone to keep me accountable about starting things early.',
-          ])
-        : undefined,
-    }).catch(() => undefined);
+    await ctx.db
+      .insert('buddyProfiles', {
+        userId: student,
+        isActive: true,
+        lookingFor: pickN(LOOKING_FOR, int(1, 3)),
+        availability: randomAvailability(),
+        note: chance(0.5)
+          ? pick([
+              'Prefer working in silence and then comparing notes after.',
+              'Happy to meet in person or online, whichever is easier.',
+              'Looking for someone to keep me accountable about starting things early.',
+            ])
+          : undefined,
+      })
+      .catch(() => undefined);
   }
   console.log(`  ✓ ${buddyProfileCount} buddy profiles`);
 
@@ -1224,11 +1533,13 @@ export const run = mutation(async (ctx) => {
     eventCount++;
 
     for (const attendee of pickN(userIds.slice(1), int(4, 22))) {
-      await ctx.db.insert('eventRsvps', {
-        eventId: event,
-        userId: attendee,
-        status: chance(0.7) ? 'GOING' : 'INTERESTED',
-      }).catch(() => undefined);
+      await ctx.db
+        .insert('eventRsvps', {
+          eventId: event,
+          userId: attendee,
+          status: chance(0.7) ? 'GOING' : 'INTERESTED',
+        })
+        .catch(() => undefined);
     }
   }
   console.log(`  ✓ ${eventCount} events with RSVPs`);
@@ -1277,13 +1588,41 @@ export const run = mutation(async (ctx) => {
     });
   }
   for (let i = 0; i < 3; i++) {
-    await ctx.db.insert('mentorLinks', {
-      mentorId: mentors[i]!,
-      menteeId: pick(userIds.slice(1)),
-      status: 'ACTIVE',
-    }).catch(() => undefined);
+    await ctx.db
+      .insert('mentorLinks', {
+        mentorId: mentors[i]!,
+        menteeId: pick(userIds.slice(1)),
+        status: 'ACTIVE',
+      })
+      .catch(() => undefined);
   }
   console.log(`  ✓ ${mentors.length} mentors`);
+
+  // ── Instance configuration ───────────────────────────────────────────────
+  // Without this row the app renders first-run setup, and a seeded campus is by
+  // definition already set up.
+  await ctx.db.insert('instanceConfig', {
+    schoolName: 'Lakeshore University',
+    shortName: 'Lakeshore',
+    allowedEmailDomains: ['lakeshore.edu'],
+    tagline: 'Everything your campus knows, in one place that outlives the semester.',
+    supportEmail: 'help@lakeshore.edu',
+    currentTerm: TERM,
+    allowStudentSpaces: true,
+    allowSelfRegistration: true,
+    setupCompletedAt: now,
+    setupByUserId: adminId,
+  });
+  console.log('  ✓ instance configured (Lakeshore University)');
+
+  await ctx.db.insert('auditLogs', {
+    actorId: adminId,
+    actorName: 'Campus Admin',
+    action: 'INSTANCE_INITIALIZED',
+    targetType: 'INSTANCE',
+    summary: 'Lakeshore University was seeded with demo data',
+    metadata: { seeded: true, term: TERM },
+  });
 
   // ── Badges ───────────────────────────────────────────────────────────────
   const badgeMap = new Map<string, string>();

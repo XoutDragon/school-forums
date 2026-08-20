@@ -4,6 +4,11 @@ import { fileURLToPath, URL } from 'node:url';
 
 export default defineConfig({
   plugins: [react()],
+  // .env.local lives at the repo root, next to convex/, because `npx convex dev`
+  // reads CONVEX_DEPLOYMENT from there. Vite would otherwise look in client/ and
+  // find nothing, which shows up as "VITE_CONVEX_URL is not set" on a fresh clone
+  // that followed the setup instructions exactly.
+  envDir: fileURLToPath(new URL('..', import.meta.url)),
   resolve: {
     alias: {
       '@': fileURLToPath(new URL('./src', import.meta.url)),
@@ -12,13 +17,8 @@ export default defineConfig({
   server: {
     port: 5173,
     strictPort: true,
-    proxy: {
-      // Same-origin in dev so the httpOnly session cookie is sent without any
-      // cross-site cookie rules getting involved.
-      '/api': { target: 'http://localhost:3001', changeOrigin: true },
-      '/uploads': { target: 'http://localhost:3001', changeOrigin: true },
-      '/socket.io': { target: 'http://localhost:3001', ws: true, changeOrigin: true },
-    },
+    // No dev proxy any more: the Express API and its Socket.IO endpoint are gone,
+    // and the client talks to Convex directly over its own protocol.
   },
   test: {
     environment: 'jsdom',

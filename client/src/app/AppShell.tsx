@@ -1,8 +1,9 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { NavLink, Outlet, useLocation } from 'react-router-dom';
 import { cn } from '@/lib/utils';
 import { api } from '@/lib/convexApi';
-import { useQ } from '@/lib/convexHooks';
+import { usePublicQ, useQ } from '@/lib/convexHooks';
+import { CreateSpaceDialog } from '@/features/spaces/CreateSpaceDialog';
 import { useMe } from '@/hooks/useMe';
 import { useUi } from '@/stores/ui';
 import { Avatar } from '@/components/ui';
@@ -15,7 +16,9 @@ import {
   IconHome,
   IconMessage,
   IconMoon,
+  IconPlus,
   IconSearch,
+  IconShield,
   IconSun,
   IconTag,
   IconUsers,
@@ -25,6 +28,12 @@ interface SpaceSummary {
   id: string;
   name: string;
   type: string;
+}
+
+interface InstanceConfig {
+  shortName: string;
+  schoolName: string;
+  allowStudentSpaces: boolean;
 }
 
 const PRIMARY = [
@@ -46,9 +55,11 @@ export function AppShell() {
   const me = useMe();
   const { theme, toggleTheme, setPaletteOpen } = useUi();
   const location = useLocation();
+  const [creatingSpace, setCreatingSpace] = useState(false);
 
   // Live subscription: joining a space anywhere updates the rail immediately.
   const spaces = useQ<SpaceSummary[]>(api.spaces.mine);
+  const config = usePublicQ<InstanceConfig | null>(api.config.get);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -73,9 +84,10 @@ export function AppShell() {
         <NavLink
           to="/"
           className="mb-1 flex h-10 w-10 items-center justify-center rounded-xl bg-accent font-display text-[0.9rem] font-bold text-white"
-          aria-label="CampusConnect home"
+          aria-label={`${config?.schoolName ?? 'CampusConnect'} home`}
+          title={config?.schoolName ?? 'CampusConnect'}
         >
-          CC
+          {(config?.shortName ?? 'CC').slice(0, 2).toUpperCase()}
         </NavLink>
 
         <div className="my-1 h-px w-8 bg-edge" />
@@ -86,16 +98,28 @@ export function AppShell() {
           </RailLink>
         ))}
 
-        {spaces && spaces.length > 0 && (
-          <>
-            <div className="my-1.5 h-px w-8 bg-edge" />
-            <div className="flex w-full flex-1 flex-col items-center gap-1 overflow-y-auto no-scrollbar">
-              {spaces.slice(0, 14).map((space) => (
-                <SpaceRailIcon key={space.id} space={space} />
-              ))}
-            </div>
-          </>
-        )}
+        <div className="my-1.5 h-px w-8 bg-edge" />
+        <div className="flex w-full flex-1 flex-col items-center gap-1 overflow-y-auto no-scrollbar">
+          {(spaces ?? []).slice(0, 14).map((space) => (
+            <SpaceRailIcon key={space.id} space={space} />
+          ))}
+
+          {/* Creating a space belongs at the end of the space list, not in a menu —
+              it is the same axis as the things above it. */}
+          {config?.allowStudentSpaces !== false && (
+            <button
+              onClick={() => setCreatingSpace(true)}
+              title="Start a space"
+              aria-label="Start a space"
+              className="group relative flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-dashed border-edge text-dim transition hover:border-accent hover:text-accent-lift"
+            >
+              <IconPlus className="h-4 w-4" />
+              <span className="pointer-events-none absolute left-full z-40 ml-2 hidden whitespace-nowrap rounded-md border border-edge bg-panel px-2 py-1 text-xs text-chalk shadow-pop group-hover:block">
+                Start a space
+              </span>
+            </button>
+          )}
+        </div>
 
         <div className="mt-auto flex flex-col items-center gap-1 pt-2">
           <button
@@ -106,6 +130,11 @@ export function AppShell() {
             <IconSearch />
           </button>
           <NotificationBell />
+          {me?.isAdmin && (
+            <RailLink to="/admin" label="Administration">
+              <IconShield />
+            </RailLink>
+          )}
           <button
             onClick={toggleTheme}
             className="flex h-10 w-10 items-center justify-center rounded-lg text-dim transition hover:bg-raised hover:text-chalk"
@@ -160,6 +189,7 @@ export function AppShell() {
       </nav>
 
       <CommandPalette />
+      <CreateSpaceDialog open={creatingSpace} onClose={() => setCreatingSpace(false)} />
     </div>
   );
 }
@@ -182,7 +212,7 @@ function RailLink({
       className={({ isActive }) =>
         cn(
           'group relative flex h-10 w-10 items-center justify-center rounded-lg transition',
-          isActive ? 'bg-accent/15 text-accent-lift' : 'text-dim hover:bg-raised hover:text-chalk',
+          isActive ? 'nav-active' : 'text-dim hover:bg-raised hover:text-chalk',
         )
       }
     >
@@ -208,6 +238,7 @@ function SpaceRailIcon({ space }: { space: SpaceSummary }) {
     CLUB: 'text-clubs',
     COURSE: 'text-courses',
     MAJOR: 'text-accent-lift',
+    INTEREST: 'text-clubs',
   };
   // Course spaces show their code, everything else its initials — the code is more
   // recognisable at 40px than "CS 2210 — Data Structures…" ever could be.
@@ -228,11 +259,8 @@ function SpaceRailIcon({ space }: { space: SpaceSummary }) {
         cn(
           'group relative flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border text-[0.6rem] font-semibold transition',
           isActive
-            ? 'border-accent/50 bg-accent/15 text-chalk'
-            : cn(
-                'border-edge bg-raised hover:border-faint/60',
-                TYPE_TONE[space.type] ?? 'text-dim',
-              ),
+            ? 'border-accent bg-accent-wash text-accent-lift'
+            : cn('border-edge bg-panel hover:border-faint/60', TYPE_TONE[space.type] ?? 'text-dim'),
         )
       }
     >
