@@ -1,4 +1,6 @@
 import { v } from 'convex/values';
+import type { Id } from './_generated/dataModel';
+import type { MutationCtx } from './_generated/server';
 import { mutation, query } from './_generated/server';
 import { requireUser } from './lib/auth';
 import { reevaluateBadges } from './lib/karma';
@@ -173,6 +175,46 @@ export const getBySlug = query({
 });
 
 /** Joining a club joins its space; following gets announcements only (section 5.4). */
+/**
+ * Who should own a club's space.
+ *
+ * Club leadership, not join order. `ClubMembership` already records a PRESIDENT and
+ * EXECs (section 5.4), so a space created on demand should go to them — otherwise
+ * whichever student happens to click Join first silently acquires the authority to
+ * rename, restructure and delete the club's space.
+ *
+ * When a club has nobody on record, a campus administrator holds it as a caretaker
+ * and the space is flagged `ownerIsPlaceholder`, which puts it in the admin queue
+ * for assignment. The space still works in the meantime — an unusable space would
+ * just move the problem onto the student who tried to join.
+ */
+async function resolveClubSpaceOwner(
+  ctx: MutationCtx,
+  clubId: Id<'clubs'>,
+): Promise<{ userId: Id<'users'>; isPlaceholder: boolean; execIds: Id<'users'>[] }> {
+  const memberships = await ctx.db
+    .query('clubMemberships')
+    .withIndex('by_club', (q) => q.eq('clubId', clubId))
+    .collect();
+
+  const president = memberships.find((m) => m.role === 'PRESIDENT');
+  const execs = memberships.filter((m) => m.role === 'EXEC');
+  const execIds = [...(president ? [president.userId] : []), ...execs.map((m) => m.userId)];
+
+  const leader = president ?? execs[0];
+  if (leader) return { userId: leader.userId, isPlaceholder: false, execIds };
+
+  // Nobody runs this club on paper. Park it with an administrator.
+  const admin = (await ctx.db.query('users').take(200)).find((u) => u.isAdmin && !u.deletedAt);
+  if (admin) return { userId: admin._id, isPlaceholder: true, execIds };
+
+  // No administrator either, which means setup never ran. Fall back to the club's
+  // first member so the space is at least well-formed.
+  const anyone = memberships[0];
+  if (!anyone) throw new Error('BAD_REQUEST: This club has nobody in it yet');
+  return { userId: anyone.userId, isPlaceholder: true, execIds };
+}
+
 export const setMembership = mutation({
   args: {
     token: v.string(),
@@ -210,16 +252,19 @@ export const setMembership = mutation({
     // A club with no space yet gets one on first join, so joining never lands
     // somebody nowhere.
     if (args.role === 'MEMBER' && !spaceId) {
+      const owner = await resolveClubSpaceOwner(ctx, args.clubId);
+
       spaceId = await ctx.db.insert('spaces', {
         name: club.name,
         slug: `club-${club.slug}`,
         description: club.description,
         type: 'CLUB',
         visibility: 'PUBLIC',
-        ownerId: user._id,
+        ownerId: owner.userId,
         createdById: user._id,
         linkedClubId: args.clubId,
         publishedAt: Date.now(),
+        ownerIsPlaceholder: owner.isPlaceholder ? true : undefined,
       });
 
       const channelNames = ['general', 'announcements', 'resources'];
@@ -234,16 +279,27 @@ export const setMembership = mutation({
         });
       }
 
-      // The space records this person as its owner, so their membership has to say
-      // so too. Permission checks read the spaceMembers row, not `ownerId` — leaving
-      // them at MEMBER would mean the declared owner could not manage, delete or
-      // hand on the space they supposedly own.
+      // Permission checks read the spaceMembers row, not `ownerId`, so the two have
+      // to agree — otherwise the declared owner cannot manage, delete or hand on the
+      // space they supposedly own.
       await ctx.db.insert('spaceMembers', {
         spaceId,
-        userId: user._id,
+        userId: owner.userId,
         role: 'OWNER',
         joinedAt: Date.now(),
       });
+
+      // Everyone else on the exec gets admin, so leadership of the club is
+      // leadership of its space rather than a second thing to maintain.
+      for (const execId of owner.execIds) {
+        if (execId === owner.userId) continue;
+        await ctx.db.insert('spaceMembers', {
+          spaceId,
+          userId: execId,
+          role: 'ADMIN',
+          joinedAt: Date.now(),
+        });
+      }
     }
 
     if (args.role === 'MEMBER' && spaceId) {

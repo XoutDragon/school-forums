@@ -174,6 +174,17 @@ Findings from a pass over the merged tree, and what changed.
    Form controls now have their own `--field` / `--field-edge` pair, which keeps
    dividers soft while making inputs legible in both themes.
 
+6. **Club space ownership followed join order.** A club with no space yet gets one
+   created on first join, and the creating student became its owner — so whoever
+   clicked Join first silently acquired the authority to rename, restructure and
+   delete that club's space. `ClubMembership` already records a PRESIDENT and EXECs
+   (section 5.4), and `setMembership` can only ever set MEMBER or FOLLOWER, so join
+   order was never a signal about leadership. Ownership now resolves president →
+   exec → a campus administrator as caretaker, execs get ADMIN on the space, and a
+   caretaker-held space is flagged `ownerIsPlaceholder` so it appears in the admin
+   assignment queue instead of sitting unnoticed. The space stays usable while it
+   waits — refusing the join would only move the problem onto the student.
+
 **Fixed — backend that nothing called**
 
 An automated cross-check of every `api.<module>.<fn>` the client references against

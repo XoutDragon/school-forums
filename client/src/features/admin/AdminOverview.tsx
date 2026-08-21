@@ -63,7 +63,7 @@ export function AdminOverview() {
               tone="clubs"
               count={stats.spaces.unclaimed}
               label={stats.spaces.unclaimed === 1 ? 'space needs an owner' : 'spaces need owners'}
-              body="Drafted spaces stay invisible to students until somebody owns them."
+              body="Drafts stay invisible until assigned; caretaker spaces are being held by an administrator."
               to="/admin/spaces"
               cta="Assign owners"
             />

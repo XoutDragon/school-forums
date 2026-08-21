@@ -69,7 +69,9 @@ export const stats = query({
       },
       spaces: {
         total: spaces.filter((s) => s.publishedAt !== undefined).length,
-        unclaimed: spaces.filter((s) => s.publishedAt === undefined).length,
+        // Two ways a space can be waiting on you: drafted and never published, or
+        // published with an administrator holding it as a caretaker.
+        unclaimed: spaces.filter((s) => s.publishedAt === undefined || s.ownerIsPlaceholder).length,
         studentCreated: spaces.filter((s) => s.type === 'INTEREST' || s.type === 'CLUB').length,
       },
       clubs: clubs.length,
@@ -446,10 +448,10 @@ export const spaces = query({
       rows
         .filter((s) => !term || s.name.toLowerCase().includes(term) || s.slug.includes(term))
         .sort((a, b) => {
-          // Unclaimed drafts first: they are the ones waiting on the admin.
-          const aDraft = a.publishedAt === undefined ? 0 : 1;
-          const bDraft = b.publishedAt === undefined ? 0 : 1;
-          return aDraft - bDraft || b._creationTime - a._creationTime;
+          // Anything without a real owner first: those are waiting on the admin.
+          const needs = (s: (typeof rows)[number]) =>
+            s.publishedAt === undefined || s.ownerIsPlaceholder ? 0 : 1;
+          return needs(a) - needs(b) || b._creationTime - a._creationTime;
         })
         .slice(0, 200)
         .map(async (space) => {
@@ -472,6 +474,7 @@ export const spaces = query({
             visibility: space.visibility,
             tags: space.tags ?? [],
             isPublished: space.publishedAt !== undefined,
+            ownerIsPlaceholder: space.ownerIsPlaceholder === true,
             createdAt: space._creationTime,
             memberCount: members.length,
             channelCount: channels.length,
@@ -626,7 +629,11 @@ export const assignSpaceOwner = mutation({
       .withIndex('by_space_user', (q) => q.eq('spaceId', args.spaceId).eq('userId', admin._id))
       .unique();
     if (adminMembership && adminMembership.userId !== target._id) {
-      if (space.publishedAt === undefined) await ctx.db.delete(adminMembership._id);
+      // A draft placeholder and a caretaker are both people who were never really
+      // in this space; step out entirely. An admin who genuinely joined keeps
+      // admin rather than being dropped on a handover.
+      const wasPlaceholder = space.publishedAt === undefined || space.ownerIsPlaceholder === true;
+      if (wasPlaceholder) await ctx.db.delete(adminMembership._id);
       else await ctx.db.patch(adminMembership._id, { role: 'ADMIN' });
     }
 
@@ -634,6 +641,8 @@ export const assignSpaceOwner = mutation({
     await ctx.db.patch(args.spaceId, {
       ownerId: target._id,
       publishedAt: space.publishedAt ?? Date.now(),
+      // A real person owns it now, so it leaves the queue.
+      ownerIsPlaceholder: undefined,
     });
 
     await ctx.db.insert('notifications', {

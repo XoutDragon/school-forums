@@ -26,6 +26,7 @@ interface AdminSpace {
   visibility: string;
   tags: string[];
   isPublished: boolean;
+  ownerIsPlaceholder: boolean;
   createdAt: number;
   memberCount: number;
   channelCount: number;
@@ -50,8 +51,10 @@ export function AdminSpaces() {
   const spaces = useQ<AdminSpace[]>(api.admin.spaces, { search });
   const removeSpace = useM(api.spaces.remove);
 
-  const drafts = (spaces ?? []).filter((s) => !s.isPublished);
-  const published = (spaces ?? []).filter((s) => s.isPublished);
+  // Drafted-and-invisible and published-but-caretaker-owned are different states
+  // with the same remedy, so they share a section.
+  const needsOwner = (spaces ?? []).filter((s) => !s.isPublished || s.ownerIsPlaceholder);
+  const settled = (spaces ?? []).filter((s) => s.isPublished && !s.ownerIsPlaceholder);
 
   async function doDelete() {
     if (!deleting) return;
@@ -118,25 +121,29 @@ export function AdminSpaces() {
         />
       ) : (
         <>
-          {drafts.length > 0 && (
+          {needsOwner.length > 0 && (
             <section>
               <h2 className="mb-2 text-sm font-semibold text-chalk">
                 Waiting for an owner{' '}
-                <span className="font-mono text-xs font-normal text-faint">({drafts.length})</span>
+                <span className="font-mono text-xs font-normal text-faint">
+                  ({needsOwner.length})
+                </span>
               </h2>
               <p className="mb-3 text-xs text-dim">
-                Invisible to students. Assign an owner to publish.
+                Drafts are invisible to students until you assign one. Caretaker spaces work
+                already, but an administrator is holding them because the club has no president or
+                exec on record.
               </p>
-              <SpaceTable spaces={drafts} onAssign={setAssigning} onDelete={setDeleting} />
+              <SpaceTable spaces={needsOwner} onAssign={setAssigning} onDelete={setDeleting} />
             </section>
           )}
 
           <section>
             <h2 className="mb-3 text-sm font-semibold text-chalk">
-              Published{' '}
-              <span className="font-mono text-xs font-normal text-faint">({published.length})</span>
+              Settled{' '}
+              <span className="font-mono text-xs font-normal text-faint">({settled.length})</span>
             </h2>
-            <SpaceTable spaces={published} onAssign={setAssigning} onDelete={setDeleting} />
+            <SpaceTable spaces={settled} onAssign={setAssigning} onDelete={setDeleting} />
           </section>
         </>
       )}
@@ -195,7 +202,10 @@ function SpaceTable({
                 )}
                 <Badge>{space.type.replace('_', ' ').toLowerCase()}</Badge>
                 {space.visibility === 'PRIVATE' && <Badge tone="clubs">private</Badge>}
-                {!space.isPublished && <Badge tone="events">unclaimed</Badge>}
+                {!space.isPublished && <Badge tone="events">draft</Badge>}
+                {space.isPublished && space.ownerIsPlaceholder && (
+                  <Badge tone="clubs">caretaker</Badge>
+                )}
               </div>
               <p className="mt-0.5 truncate text-xs text-faint">
                 /{space.slug} · {space.memberCount} {space.memberCount === 1 ? 'member' : 'members'}{' '}

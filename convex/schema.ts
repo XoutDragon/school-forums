@@ -264,6 +264,13 @@ export default defineSchema({
     publishedAt: v.optional(v.number()),
     /** Free-text interest tags, used by discovery and the club quiz. */
     tags: v.optional(v.array(v.string())),
+    /**
+     * True when `ownerId` points at a caretaker rather than at somebody who
+     * actually runs this space — a club space created on demand for a club with no
+     * president or exec on record. The space works normally; it just shows up in
+     * the admin queue until a real owner is assigned.
+     */
+    ownerIsPlaceholder: v.optional(v.boolean()),
   })
     // UNIQUE: slug
     .index('by_slug', ['slug'])
