@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { api } from '@/lib/convexApi';
 import { useM, useQ } from '@/lib/convexHooks';
 import { cn, relativeTime, YEAR_LABELS } from '@/lib/utils';
@@ -66,9 +67,13 @@ const YEARS = [
 
 export function AdminMembers() {
   const [search, setSearch] = useState('');
-  const [filter, setFilter] = useState(
-    () => new URLSearchParams(window.location.search).get('filter') ?? 'ALL',
-  );
+  // Read through the router rather than window.location: the overview links here
+  // with ?filter=SUSPENDED, and a client-side navigation does not remount this
+  // component, so a useState initialiser would keep the stale value.
+  const [params, setParams] = useSearchParams();
+  const filter = params.get('filter') ?? 'ALL';
+  const setFilter = (next: string) =>
+    setParams(next === 'ALL' ? {} : { filter: next }, { replace: true });
   const [editing, setEditing] = useState<string | null>(null);
 
   const members = useQ<Member[]>(api.admin.members, { search, filter, limit: 120 });

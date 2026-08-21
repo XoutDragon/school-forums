@@ -18,8 +18,9 @@ import {
   Skeleton,
   Textarea,
 } from '@/components/ui';
-import { IconWave } from '@/components/Icons';
-import { ImagePicker } from '@/components/ui/overlays';
+import { IconFlag, IconKey, IconWave } from '@/components/Icons';
+import { Dialog, ImagePicker } from '@/components/ui/overlays';
+import { ReportDialog } from '@/features/moderation/ReportDialog';
 import { api } from '@/lib/convexApi';
 import { useM, useQ } from '@/lib/convexHooks';
 import { useUpload } from '@/lib/upload';
@@ -42,6 +43,8 @@ export function ProfilePage() {
   const signOut = useAuth((s) => s.signOut);
   const navigate = useNavigate();
   const [editing, setEditing] = useState(false);
+  const [reporting, setReporting] = useState(false);
+  const [changingPassword, setChangingPassword] = useState(false);
 
   const profile = useQ<Profile>(api.users.profile, username ? { username } : 'skip');
   const isLoading = profile === undefined;
@@ -116,12 +119,52 @@ export function ProfilePage() {
                 </Button>
               )}
               {profile.canDm && <Button onClick={() => void message()}>Message</Button>}
+              <Button
+                variant="ghost"
+                aria-label={`Report ${profile.displayName}`}
+                onClick={() => setReporting(true)}
+              >
+                <IconFlag className="h-4 w-4" />
+              </Button>
             </>
           )}
         </div>
       </header>
 
-      {editing && isSelf && me && <EditProfile me={me} onDone={() => setEditing(false)} />}
+      {isSelf && me?.mustChangePassword && (
+        <div className="flex flex-wrap items-center gap-3 rounded-xl border border-clubs/40 bg-clubs/[0.07] px-4 py-3">
+          <p className="min-w-0 flex-1 text-sm leading-relaxed text-chalk">
+            Your campus IT team issued a password reset for this account. Set a new password to
+            clear this.
+          </p>
+          <Button size="sm" onClick={() => setChangingPassword(true)}>
+            <IconKey className="h-3.5 w-3.5" />
+            Change password
+          </Button>
+        </div>
+      )}
+
+      {editing && isSelf && me && (
+        <EditProfile
+          me={me}
+          onDone={() => setEditing(false)}
+          onChangePassword={() => setChangingPassword(true)}
+        />
+      )}
+
+      {isSelf && (
+        <ChangePasswordDialog open={changingPassword} onClose={() => setChangingPassword(false)} />
+      )}
+
+      {!isSelf && (
+        <ReportDialog
+          open={reporting}
+          onClose={() => setReporting(false)}
+          targetType="USER"
+          targetId={profile.id}
+          context={`@${profile.username} — ${profile.displayName}`}
+        />
+      )}
 
       <div className="grid gap-6 lg:grid-cols-[1fr_1.3fr]">
         <div className="space-y-5">
@@ -229,7 +272,15 @@ export function ProfilePage() {
   );
 }
 
-function EditProfile({ me, onDone }: { me: MeUser; onDone: () => void }) {
+function EditProfile({
+  me,
+  onDone,
+  onChangePassword,
+}: {
+  me: MeUser;
+  onDone: () => void;
+  onChangePassword: () => void;
+}) {
   const save = useM(api.auth.updateProfile);
   const [busy, setBusy] = useState(false);
 
@@ -303,6 +354,23 @@ function EditProfile({ me, onDone }: { me: MeUser; onDone: () => void }) {
           </label>
         </div>
 
+        <div className="border-t border-edge pt-4">
+          <p className="text-sm font-medium text-chalk">Password</p>
+          <p className="mt-1 text-xs leading-relaxed text-dim">
+            Changing it signs out every other device on this account.
+          </p>
+          <Button
+            type="button"
+            variant="secondary"
+            size="sm"
+            className="mt-2"
+            onClick={onChangePassword}
+          >
+            <IconKey className="h-3.5 w-3.5" />
+            Change password
+          </Button>
+        </div>
+
         <Button type="submit" loading={busy}>
           Save changes
         </Button>
@@ -374,5 +442,119 @@ function AvatarSection({ me }: { me: MeUser }) {
         stays the same everywhere, so people still recognise you.
       </p>
     </section>
+  );
+}
+
+/**
+ * Changing your own password.
+ *
+ * Requires the current one. An active session is proof that somebody signed in at
+ * some point, not that the person at the keyboard is the account holder — and the
+ * whole point of changing a password is usually that you think someone else knows
+ * it. The mutation ends every other session on success, for the same reason.
+ */
+function ChangePasswordDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const change = useM(api.auth.changePassword);
+  const [current, setCurrent] = useState('');
+  const [next, setNext] = useState('');
+  const [confirm, setConfirm] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [done, setDone] = useState(false);
+
+  function reset() {
+    setCurrent('');
+    setNext('');
+    setConfirm('');
+    setError(null);
+    setDone(false);
+    onClose();
+  }
+
+  const mismatch = confirm.length > 0 && next !== confirm;
+  const valid = current.length > 0 && next.length >= 8 && next === confirm;
+
+  return (
+    <Dialog
+      open={open}
+      onClose={reset}
+      width="sm"
+      title={done ? 'Password changed' : 'Change your password'}
+      description={
+        done ? undefined : 'Your other devices will be signed out and have to sign in again.'
+      }
+      footer={
+        done ? (
+          <Button onClick={reset}>Done</Button>
+        ) : (
+          <>
+            <Button variant="secondary" onClick={reset}>
+              Cancel
+            </Button>
+            <Button
+              loading={busy}
+              disabled={!valid}
+              onClick={async () => {
+                setBusy(true);
+                setError(null);
+                try {
+                  await change({ currentPassword: current, newPassword: next });
+                  setDone(true);
+                } catch (err) {
+                  const raw = err instanceof Error ? err.message : '';
+                  setError(/(?::\s)(.*)/.exec(raw)?.[1] ?? 'Could not change your password.');
+                } finally {
+                  setBusy(false);
+                }
+              }}
+            >
+              Change password
+            </Button>
+          </>
+        )
+      }
+    >
+      {done ? (
+        <p className="text-sm leading-relaxed text-dim">
+          Done. This device stays signed in; everywhere else will need the new password.
+        </p>
+      ) : (
+        <div className="space-y-4">
+          <Field label="Current password">
+            <Input
+              type="password"
+              autoComplete="current-password"
+              value={current}
+              onChange={(e) => setCurrent(e.target.value)}
+            />
+          </Field>
+          <Field label="New password" hint="At least 8 characters.">
+            <Input
+              type="password"
+              autoComplete="new-password"
+              value={next}
+              onChange={(e) => setNext(e.target.value)}
+            />
+          </Field>
+          <Field label="Confirm new password" error={mismatch ? 'These do not match.' : undefined}>
+            <Input
+              type="password"
+              autoComplete="new-password"
+              value={confirm}
+              onChange={(e) => setConfirm(e.target.value)}
+            />
+          </Field>
+
+          {error && (
+            <p
+              role="alert"
+              className="rounded-lg border border-events/40 bg-events/[0.07] px-3 py-2.5 text-sm text-events"
+            >
+              {error}
+            </p>
+          )}
+        </div>
+      )}
+    </Dialog>
   );
 }

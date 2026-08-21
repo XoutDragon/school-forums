@@ -31,6 +31,7 @@ import { AdminMembers } from '@/features/admin/AdminMembers';
 import { AdminSpaces } from '@/features/admin/AdminSpaces';
 import { AdminMajors } from '@/features/admin/AdminMajors';
 import { AdminSettings } from '@/features/admin/AdminSettings';
+import { AdminReports } from '@/features/admin/AdminReports';
 import { TermsPage } from '@/features/legal/TermsPage';
 import { PrivacyPage } from '@/features/legal/PrivacyPage';
 
@@ -104,6 +105,7 @@ export function App() {
              the two have different navigation and different audiences. */}
       <Route path="/admin" element={me.isAdmin ? <AdminLayout /> : <Navigate to="/" replace />}>
         <Route index element={<AdminOverview />} />
+        <Route path="reports" element={<AdminReports />} />
         <Route path="logs" element={<AdminLogs />} />
         <Route path="members" element={<AdminMembers />} />
         <Route path="spaces" element={<AdminSpaces />} />

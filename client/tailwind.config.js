@@ -21,6 +21,12 @@ export default {
           // stay legible in both themes and an alpha of one hue cannot do that.
           wash: 'rgb(var(--accent-wash) / <alpha-value>)',
         },
+        // Form controls. Separate from panel/edge so inputs stay legible on a white
+        // card without making every divider heavier — see the note in index.css.
+        field: {
+          DEFAULT: 'rgb(var(--field) / <alpha-value>)',
+          edge: 'rgb(var(--field-edge) / <alpha-value>)',
+        },
         // Per-feature secondary hues. Desaturated relative to the original palette:
         // they label a card, they do not decorate the page.
         clubs: 'rgb(var(--clubs) / <alpha-value>)',

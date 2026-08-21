@@ -8,6 +8,7 @@ import { useMe } from '@/hooks/useMe';
 import { useUi } from '@/stores/ui';
 import { Avatar } from '@/components/ui';
 import { CommandPalette } from '@/components/CommandPalette';
+import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { NotificationBell } from '@/components/NotificationBell';
 import {
   IconBook,
@@ -156,13 +157,17 @@ export function AppShell() {
 
       {/* ── Content. Chat manages its own scrolling; everything else gets one column. */}
       <main className={cn('flex-1 overflow-hidden', !isChat && 'overflow-y-auto')}>
-        {isChat ? (
-          <Outlet />
-        ) : (
-          <div className="mx-auto max-w-6xl px-4 pb-24 pt-6 md:px-8 md:pb-12">
+        {/* Inside the shell, not around it: a page that throws should still leave
+            you the rail to navigate away with. */}
+        <ErrorBoundary resetKey={location.pathname}>
+          {isChat ? (
             <Outlet />
-          </div>
-        )}
+          ) : (
+            <div className="mx-auto max-w-6xl px-4 pb-24 pt-6 md:px-8 md:pb-12">
+              <Outlet />
+            </div>
+          )}
+        </ErrorBoundary>
       </main>
 
       {/* ── Mobile bottom bar. */}

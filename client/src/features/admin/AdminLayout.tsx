@@ -5,8 +5,10 @@ import { usePublicQ } from '@/lib/convexHooks';
 import { useMe } from '@/hooks/useMe';
 import { useUi } from '@/stores/ui';
 import { Avatar } from '@/components/ui';
+import { ErrorBoundary } from '@/components/ErrorBoundary';
 import {
   IconBuilding,
+  IconFlag,
   IconGauge,
   IconHome,
   IconList,
@@ -45,6 +47,7 @@ const NAV: {
     group: 'Campus',
     items: [
       { to: '/admin', label: 'Overview', icon: IconGauge, end: true },
+      { to: '/admin/reports', label: 'Reports', icon: IconFlag },
       { to: '/admin/logs', label: 'Activity log', icon: IconList },
     ],
   },
@@ -64,6 +67,7 @@ const NAV: {
 
 const CRUMBS: Record<string, string> = {
   '/admin': 'Overview',
+  '/admin/reports': 'Reports',
   '/admin/logs': 'Activity log',
   '/admin/members': 'Members',
   '/admin/spaces': 'Spaces',
@@ -227,7 +231,9 @@ export function AdminLayout() {
 
         <main className="min-h-0 flex-1 overflow-y-auto">
           <div className="mx-auto max-w-6xl px-4 py-6 md:px-8">
-            <Outlet />
+            <ErrorBoundary resetKey={location.pathname}>
+              <Outlet />
+            </ErrorBoundary>
           </div>
         </main>
       </div>
