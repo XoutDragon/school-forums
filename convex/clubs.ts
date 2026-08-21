@@ -197,14 +197,20 @@ export const setMembership = mutation({
         role: args.role,
       });
 
-    let space = await ctx.db
+    const existingSpace = await ctx.db
       .query('spaces')
       .withIndex('by_club', (q) => q.eq('linkedClubId', args.clubId))
       .first();
 
-    // If joining as MEMBER but space doesn't exist, create it now so they can join
-    if (args.role === 'MEMBER' && !space) {
-      const spaceId = await ctx.db.insert('spaces', {
+    // Tracked as an id rather than a stand-in document: the freshly inserted space
+    // is not a full Doc, and casting a partial object to one is a lie the next
+    // reader of this code has to catch.
+    let spaceId = existingSpace?._id ?? null;
+
+    // A club with no space yet gets one on first join, so joining never lands
+    // somebody nowhere.
+    if (args.role === 'MEMBER' && !spaceId) {
+      spaceId = await ctx.db.insert('spaces', {
         name: club.name,
         slug: `club-${club.slug}`,
         description: club.description,
@@ -215,13 +221,11 @@ export const setMembership = mutation({
         linkedClubId: args.clubId,
         publishedAt: Date.now(),
       });
-      space = { _id: spaceId, publishedAt: Date.now() } as any;
 
-      // Create starter channels
       const channelNames = ['general', 'announcements', 'resources'];
       for (let i = 0; i < channelNames.length; i++) {
         await ctx.db.insert('channels', {
-          spaceId: spaceId,
+          spaceId,
           name: channelNames[i]!,
           type: i === 1 ? 'ANNOUNCEMENT' : 'TEXT',
           position: i,
@@ -229,16 +233,27 @@ export const setMembership = mutation({
           topic: i === 1 ? 'Announcements from leadership.' : undefined,
         });
       }
+
+      // The space records this person as its owner, so their membership has to say
+      // so too. Permission checks read the spaceMembers row, not `ownerId` — leaving
+      // them at MEMBER would mean the declared owner could not manage, delete or
+      // hand on the space they supposedly own.
+      await ctx.db.insert('spaceMembers', {
+        spaceId,
+        userId: user._id,
+        role: 'OWNER',
+        joinedAt: Date.now(),
+      });
     }
 
-    if (args.role === 'MEMBER' && space) {
+    if (args.role === 'MEMBER' && spaceId) {
       const member = await ctx.db
         .query('spaceMembers')
-        .withIndex('by_space_user', (q) => q.eq('spaceId', space._id).eq('userId', user._id))
+        .withIndex('by_space_user', (q) => q.eq('spaceId', spaceId!).eq('userId', user._id))
         .unique();
       if (!member) {
         await ctx.db.insert('spaceMembers', {
-          spaceId: space._id,
+          spaceId,
           userId: user._id,
           role: 'MEMBER',
           joinedAt: Date.now(),
@@ -247,7 +262,7 @@ export const setMembership = mutation({
     }
 
     await reevaluateBadges(ctx, user._id);
-    return { role: args.role, spaceId: space?._id ?? null };
+    return { role: args.role, spaceId };
   },
 });
 
