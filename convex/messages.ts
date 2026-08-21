@@ -78,6 +78,22 @@ async function hydrate(
         }
       }
 
+      // Attachments stored in Convex file storage carry a storage id rather than a
+      // durable URL, so the servable URL is resolved at read time. The stored `url`
+      // is the fallback for seeded attachments, which are plain paths.
+      const attachments = await Promise.all(
+        message.attachments.map(async (att) => {
+          if (!att.storageId) return att;
+          try {
+            return { ...att, url: (await ctx.storage.getUrl(att.storageId)) ?? att.url };
+          } catch {
+            // A deleted blob should render as a broken attachment, not break the
+            // whole channel query.
+            return att;
+          }
+        }),
+      );
+
       return toMessageDto(message, {
         viewerId,
         author,
@@ -87,6 +103,7 @@ async function hydrate(
         replyTo,
         threadReplyCount: threadReplies.length,
         isPinned: Boolean(pin),
+        attachments,
       });
     }),
   );

@@ -198,10 +198,31 @@ export const messages = query({
       rows.reverse().map(async (message) => {
         const author = await ctx.db.get(message.authorId);
         const major = author?.majorId ? await ctx.db.get(author.majorId) : null;
+
+        // Same as the channel path in convex/messages.ts: storage ids resolve to a
+        // servable URL at read time, with the stored `url` as the fallback.
+        const attachments = await Promise.all(
+          message.attachments.map(async (att) => {
+            let url = att.url;
+            if (att.storageId) {
+              try {
+                url = (await ctx.storage.getUrl(att.storageId)) ?? att.url;
+              } catch {
+                // A deleted blob renders as a broken attachment rather than
+                // breaking the whole conversation query.
+              }
+            }
+            return {
+              ...att,
+              url,
+            };
+          }),
+        );
+
         return {
           id: message._id,
           content: message.deletedAt ? '' : message.content,
-          attachments: message.attachments,
+          attachments,
           author: author ? toPublicUser(author, major) : null,
           createdAt: message._creationTime,
           editedAt: message.editedAt ?? null,
@@ -213,9 +234,28 @@ export const messages = query({
 });
 
 export const send = mutation({
-  args: { token: v.string(), conversationId: v.id('directConversations'), content: v.string() },
+  args: {
+    token: v.string(),
+    conversationId: v.id('directConversations'),
+    content: v.string(),
+    attachments: v.optional(
+      v.array(
+        v.object({
+          storageId: v.optional(v.id('_storage')),
+          url: v.string(),
+          name: v.string(),
+          mimeType: v.string(),
+          size: v.number(),
+        }),
+      ),
+    ),
+  },
   handler: async (ctx, args) => {
     const user = await requireUser(ctx, args.token);
+
+    if (!args.content.trim() && !(args.attachments ?? []).length) {
+      throw new Error('BAD_REQUEST: Say something');
+    }
 
     const membership = await ctx.db
       .query('directMembers')
@@ -231,7 +271,7 @@ export const send = mutation({
       conversationId: args.conversationId,
       authorId: user._id,
       content: args.content,
-      attachments: [],
+      attachments: args.attachments ?? [],
     });
 
     const now = Date.now();
@@ -252,6 +292,20 @@ export const markRead = mutation({
       )
       .unique();
     if (membership) await ctx.db.patch(membership._id, { lastReadAt: Date.now() });
+    return null;
+  },
+});
+
+export const deleteMessage = mutation({
+  args: { token: v.string(), messageId: v.id('directMessages') },
+  handler: async (ctx, args) => {
+    const user = await requireUser(ctx, args.token);
+    const message = await ctx.db.get(args.messageId);
+    if (!message) throw new Error('NOT_FOUND: No message there');
+    if (message.authorId !== user._id) {
+      throw new Error('FORBIDDEN: You can only delete your own messages');
+    }
+    await ctx.db.patch(args.messageId, { deletedAt: Date.now(), content: '' });
     return null;
   },
 });

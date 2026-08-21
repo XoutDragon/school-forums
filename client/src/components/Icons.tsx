@@ -157,6 +157,14 @@ export const IconPlus = (p: Props) => (
   </Svg>
 );
 
+export const IconImage = (p: Props) => (
+  <Svg {...p}>
+    <rect x="3" y="3" width="18" height="18" rx="2" />
+    <circle cx="8.5" cy="8.5" r="1.5" />
+    <path d="m3 15 6-6 5 5 7-7" />
+  </Svg>
+);
+
 export const IconClose = (p: Props) => (
   <Svg {...p}>
     <path d="m6 6 12 12M18 6 6 18" />
@@ -320,18 +328,25 @@ export const IconMenu = (p: Props) => (
   </Svg>
 );
 
-export const IconImage = (p: Props) => (
-  <Svg {...p}>
-    <rect x="3" y="4.5" width="18" height="15" rx="2.5" />
-    <circle cx="8.5" cy="10" r="1.5" />
-    <path d="m4 17 4.5-4.5 3.5 3.5 3-3L20 17" />
-  </Svg>
-);
-
 export const IconLogout = (p: Props) => (
   <Svg {...p}>
     <path d="M9.5 4.5H6a2 2 0 0 0-2 2v11a2 2 0 0 0 2 2h3.5" />
     <path d="M15 8.5 19 12l-4 3.5" />
     <path d="M19 12H9.5" />
+  </Svg>
+);
+
+export const IconSpinner = (p: Props) => (
+  <Svg {...p} className={p.className ?? `${base} animate-spin`}>
+    <circle cx="12" cy="12" r="9" fill="none" strokeDasharray="56" strokeDashoffset="0" />
+    <circle
+      cx="12"
+      cy="12"
+      r="9"
+      fill="none"
+      strokeDasharray="14"
+      strokeDashoffset="0"
+      opacity="0.4"
+    />{' '}
   </Svg>
 );

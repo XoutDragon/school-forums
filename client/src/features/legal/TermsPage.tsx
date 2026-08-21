@@ -207,8 +207,8 @@ export function TermsPage() {
       <Section n="9" title="Rate limits and fair use">
         <p>
           To keep the app usable there are limits: twenty messages a minute, five anonymous posts an
-          hour, ten uploads a day, three reports an hour, and eight people in a voice room. Files
-          are capped at ten megabytes.
+          hour, a hundred uploads a day, three reports an hour, and eight people in a voice room.
+          Files are capped at ten megabytes.
         </p>
         <p>
           Do not attempt to work around these, run automated clients against the app, or probe it

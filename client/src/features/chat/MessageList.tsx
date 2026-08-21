@@ -300,8 +300,8 @@ function MessageRow({
 
           {message.attachments.length > 0 && (
             <div className="mt-2 flex flex-wrap gap-2">
-              {message.attachments.map((a) =>
-                a.mimeType.startsWith('image/') ? (
+              {message.attachments.map((a) => {
+                return a.mimeType.startsWith('image/') ? (
                   <a key={a.url} href={a.url} target="_blank" rel="noreferrer">
                     <img
                       src={a.url}
@@ -320,8 +320,8 @@ function MessageRow({
                     <span className="font-mono text-[0.625rem] uppercase text-faint">file</span>
                     {a.name}
                   </a>
-                ),
-              )}
+                );
+              })}
             </div>
           )}
 
