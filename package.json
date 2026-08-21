@@ -10,8 +10,7 @@
   "scripts": {
     "dev": "concurrently -n convex,client -c magenta,cyan \"npm:convex:dev\" \"npm:dev:client\"",
     "dev:client": "npm run dev -w client",
-    "convex:codegen": "convex codegen",
-    "build": "npm run convex:codegen && npm run build -w shared && npm run build -w client",
+    "build": "npm run build -w shared && npm run build -w client",
     "test": "npm run test -w client",
     "test:client": "npm run test -w client",
     "lint": "eslint . && prettier --check .",
