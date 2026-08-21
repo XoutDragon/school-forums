@@ -197,10 +197,39 @@ export const setMembership = mutation({
         role: args.role,
       });
 
-    const space = await ctx.db
+    let space = await ctx.db
       .query('spaces')
       .withIndex('by_club', (q) => q.eq('linkedClubId', args.clubId))
       .first();
+
+    // If joining as MEMBER but space doesn't exist, create it now so they can join
+    if (args.role === 'MEMBER' && !space) {
+      const spaceId = await ctx.db.insert('spaces', {
+        name: club.name,
+        slug: `club-${club.slug}`,
+        description: club.description,
+        type: 'CLUB',
+        visibility: 'PUBLIC',
+        ownerId: user._id,
+        createdById: user._id,
+        linkedClubId: args.clubId,
+        publishedAt: Date.now(),
+      });
+      space = { _id: spaceId, publishedAt: Date.now() } as any;
+
+      // Create starter channels
+      const channelNames = ['general', 'announcements', 'resources'];
+      for (let i = 0; i < channelNames.length; i++) {
+        await ctx.db.insert('channels', {
+          spaceId: spaceId,
+          name: channelNames[i]!,
+          type: i === 1 ? 'ANNOUNCEMENT' : 'TEXT',
+          position: i,
+          isDefault: i === 0,
+          topic: i === 1 ? 'Announcements from leadership.' : undefined,
+        });
+      }
+    }
 
     if (args.role === 'MEMBER' && space) {
       const member = await ctx.db
@@ -231,6 +260,21 @@ export const leave = mutation({
       .withIndex('by_club_user', (q) => q.eq('clubId', args.clubId).eq('userId', user._id))
       .unique();
     if (existing) await ctx.db.delete(existing._id);
+
+    // Also remove from the linked space
+    const space = await ctx.db
+      .query('spaces')
+      .withIndex('by_club', (q) => q.eq('linkedClubId', args.clubId))
+      .first();
+
+    if (space) {
+      const spaceMember = await ctx.db
+        .query('spaceMembers')
+        .withIndex('by_space_user', (q) => q.eq('spaceId', space._id).eq('userId', user._id))
+        .unique();
+      if (spaceMember) await ctx.db.delete(spaceMember._id);
+    }
+
     return null;
   },
 });
