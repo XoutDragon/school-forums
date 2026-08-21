@@ -185,8 +185,8 @@ export function Select({
       value={value}
       onChange={(e) => onChange(e.target.value)}
       className={cn(
-        'h-10 w-full appearance-none rounded-lg border border-edge bg-raised px-3 pr-8 text-sm text-chalk',
-        'transition focus:border-accent/60 focus:outline-none focus:ring-2 focus:ring-accent/25',
+        'h-10 w-full appearance-none rounded-lg border border-field-edge bg-field px-3 pr-8 text-sm text-chalk',
+        'transition hover:border-faint focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/25',
         className,
       )}
       style={{
@@ -242,7 +242,7 @@ export function Switch({
           aria-hidden
           className={cn(
             'block h-5 w-9 rounded-full border transition-colors',
-            checked ? 'border-accent bg-accent' : 'border-edge bg-raised',
+            checked ? 'border-accent bg-accent' : 'border-field-edge bg-field',
             'peer-focus-visible:ring-2 peer-focus-visible:ring-accent peer-focus-visible:ring-offset-2 peer-focus-visible:ring-offset-panel',
           )}
         />

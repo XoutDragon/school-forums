@@ -32,6 +32,12 @@ const RTC_CONFIG: RTCConfiguration = { iceServers: [{ urls: STUN_URL }] };
 
 const HEARTBEAT_MS = 8_000;
 
+/** Module-level constants: `?? []` inside the component allocates a fresh array on
+ *  every render, and both of these feed useEffect dependency lists — the same class
+ *  of bug that made the chat pane loop earlier in this project. */
+const NO_PARTICIPANTS: VoiceParticipant[] = [];
+const NO_SIGNALS: Signal[] = [];
+
 export type VoiceScope = 'CHANNEL' | 'DM';
 
 export interface VoiceParticipant {
@@ -102,9 +108,10 @@ export function useVoiceRoom(room: string | null, scope: VoiceScope): VoiceRoom 
   // are only reading costs nothing.
   const participants =
     useQ<VoiceParticipant[]>(api.voice.participants, active && room ? { room, scope } : 'skip') ??
-    [];
+    NO_PARTICIPANTS;
 
-  const inbox = useQ<Signal[]>(api.voice.inbox, active && room ? { room, peerId } : 'skip') ?? [];
+  const inbox =
+    useQ<Signal[]>(api.voice.inbox, active && room ? { room, peerId } : 'skip') ?? NO_SIGNALS;
 
   // ── Speech detection ─────────────────────────────────────────────────────
   // A time-domain RMS over each stream. Cheap, and it is what makes a voice room

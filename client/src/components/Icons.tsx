@@ -350,3 +350,10 @@ export const IconSpinner = (p: Props) => (
     />{' '}
   </Svg>
 );
+
+export const IconFlag = (p: Props) => (
+  <Svg {...p}>
+    <path d="M5 21V4" />
+    <path d="M5 4.5h11l-1.8 3.5L16 11.5H5z" />
+  </Svg>
+);

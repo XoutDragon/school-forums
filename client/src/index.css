@@ -36,6 +36,12 @@
     --accent: 91 95 199; /* #5B5FC7 */
     --accent-lift: 68 71 173; /* pressed / higher-emphasis accent */
     --accent-wash: 237 237 250; /* selected row, active nav */
+    /* Form controls get their own pair. Reusing --raised/--edge made inputs on a
+       white card nearly invisible in light mode: both were within a few percent of
+       the card itself, so a field read as a label rather than as something you type
+       into. Dividers still want the softer --edge, hence two tokens. */
+    --field: 255 255 255;
+    --field-edge: 198 198 198;
     --clubs: 168 106 20;
     --courses: 15 122 102;
     --events: 196 49 75;
@@ -56,6 +62,8 @@
     --accent: 127 133 245; /* #7F85F5 — Teams' dark-theme brand step */
     --accent-lift: 162 166 250;
     --accent-wash: 47 48 71;
+    --field: 61 61 61;
+    --field-edge: 94 94 94;
     --clubs: 226 168 79;
     --courses: 79 192 168;
     --events: 232 106 127;

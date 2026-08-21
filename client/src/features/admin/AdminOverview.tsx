@@ -74,7 +74,7 @@ export function AdminOverview() {
               count={stats.openReports}
               label={stats.openReports === 1 ? 'open report' : 'open reports'}
               body="Students have flagged content that nobody has resolved yet."
-              to="/admin/logs"
+              to="/admin/reports"
               cta="Review"
             />
           )}

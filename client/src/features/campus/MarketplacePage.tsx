@@ -16,7 +16,8 @@ import {
 } from '@/components/ui';
 import { Dialog, Select, validateImage } from '@/components/ui/overlays';
 import { FilterChip } from '@/features/courses/CourseListPage';
-import { IconClose, IconImage, IconPlus } from '@/components/Icons';
+import { IconClose, IconFlag, IconImage, IconPlus } from '@/components/Icons';
+import { ReportDialog } from '@/features/moderation/ReportDialog';
 import { api } from '@/lib/convexApi';
 import { useM, useQ } from '@/lib/convexHooks';
 import { useUpload } from '@/lib/upload';
@@ -41,6 +42,7 @@ const MAX_PHOTOS = 4;
 export function MarketplacePage() {
   const [category, setCategory] = useState<string>('ALL');
   const [composing, setComposing] = useState(false);
+  const [reporting, setReporting] = useState<Listing | null>(null);
   const navigate = useNavigate();
   const me = useMe();
 
@@ -168,13 +170,23 @@ export function MarketplacePage() {
                         Mark as sold
                       </Button>
                     ) : (
-                      <Button
-                        size="sm"
-                        className="w-full"
-                        onClick={() => void messageSeller(listing)}
-                      >
-                        Message seller
-                      </Button>
+                      <div className="flex gap-1.5">
+                        <Button
+                          size="sm"
+                          className="flex-1"
+                          onClick={() => void messageSeller(listing)}
+                        >
+                          Message seller
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          aria-label={`Report "${listing.title}"`}
+                          onClick={() => setReporting(listing)}
+                        >
+                          <IconFlag className="h-3.5 w-3.5" />
+                        </Button>
+                      </div>
                     )}
                   </div>
                 )}
@@ -185,6 +197,16 @@ export function MarketplacePage() {
       )}
 
       <ListingComposer open={composing} onClose={() => setComposing(false)} />
+
+      {reporting && (
+        <ReportDialog
+          open
+          onClose={() => setReporting(null)}
+          targetType="LISTING"
+          targetId={reporting.id}
+          context={`${reporting.title} — ${formatPrice(reporting.priceCents)}`}
+        />
+      )}
     </div>
   );
 }

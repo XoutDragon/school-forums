@@ -64,9 +64,9 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button
 // ── Inputs ─────────────────────────────────────────────────────────────────
 
 const FIELD =
-  'w-full rounded-lg border border-edge bg-raised px-3 py-2 text-sm text-chalk ' +
-  'placeholder:text-faint transition focus:border-accent/60 focus:outline-none ' +
-  'focus:ring-2 focus:ring-accent/25 disabled:opacity-50';
+  'w-full rounded-lg border border-field-edge bg-field px-3 py-2 text-sm text-chalk ' +
+  'placeholder:text-faint transition hover:border-faint focus:border-accent ' +
+  'focus:outline-none focus:ring-2 focus:ring-accent/25 disabled:opacity-50';
 
 export const Input = forwardRef<HTMLInputElement, InputHTMLAttributes<HTMLInputElement>>(
   function Input({ className, ...props }, ref) {

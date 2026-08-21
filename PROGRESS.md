@@ -147,6 +147,59 @@ Eleven additions on top of `CLAUDE.md`, requested after the port.
 
 ---
 
+## Bug-fix and polish pass
+
+Findings from a pass over the merged tree, and what changed.
+
+**Fixed — real defects**
+
+1. **No error boundary anywhere.** Convex reports a failed query by throwing during
+   render, so every case the backend treats as an error — opening a private space,
+   a stale id in a URL, a deleted channel — unmounted the entire app to a blank
+   page. `client/src/components/ErrorBoundary.tsx` now sits inside both layout
+   shells (inside, so a broken page keeps the navigation you leave it with), reads
+   the `CODE: sentence` Convex throws, and resets on route change. Verified against
+   a genuinely thrown error rather than a simulated one.
+2. **A dashboard link pointed at the wrong page.** "Open reports → Review" went to
+   the activity log, which does not show reports.
+3. **The member filter link did not apply.** `/admin/members?filter=SUSPENDED` was
+   read with a `useState` initialiser over `window.location.search`; a client-side
+   navigation does not remount the component, so the filter stayed on ALL. Now
+   `useSearchParams`.
+4. **Two unstable dependency arrays in the voice hook.** `useQ(...) ?? []` allocates
+   a fresh array every render, and both fed `useEffect` dependency lists — the same
+   shape as the bug that made the chat pane loop earlier in this project.
+5. **Light-mode form controls were nearly invisible.** Inputs reused `--raised` and
+   `--edge`, both within a few percent of a white card, so a field read as a label.
+   Form controls now have their own `--field` / `--field-edge` pair, which keeps
+   dividers soft while making inputs legible in both themes.
+
+**Fixed — backend that nothing called**
+
+An automated cross-check of every `api.<module>.<fn>` the client references against
+the exports that actually exist found 121 valid references and **23 backend
+functions with no caller**. Seven were features the brief asks for, built and then
+unreachable:
+
+- **Reporting (section 5.10).** `campus.report` existed; no report button did. There
+  is now one dialog covering all six target types, wired into messages, profiles and
+  marketplace listings.
+- **The moderation queue.** `campus.openReports`, `resolveReport` and
+  `revealAnonymousAuthor` had no UI. `/admin/reports` is that UI. Unmasking an
+  anonymous author lives there and nowhere else, because a report is the only
+  situation the brief allows it.
+- **Changing your own password.** `auth.changePassword` was unreachable, and
+  `mustChangePassword` — set whenever an admin issues a reset — was written by the
+  dashboard and read by nothing. Both are now surfaced on the profile.
+- **Editing a message.** `messages.edit` had no UI. Inline now, and deliberately not
+  offered on anonymous posts: an edit is a way to leak who wrote one.
+- **Leaving a space.** `spaces.leave` had no UI. Owners are not offered it, since the
+  server refuses and the button would only ever produce an error.
+
+Sixteen remain unreferenced. They are the pre-existing gaps listed below — the Q&A
+composer, resource upload, event and study-group creation, course enrolment — not
+regressions from this work.
+
 ## Known gaps
 
 - **Nothing in this change set has been run against a live deployment.** See

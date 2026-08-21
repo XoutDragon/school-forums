@@ -4,9 +4,10 @@ import { cn, dayStamp, timeOfDay } from '@/lib/utils';
 import { api } from '@/lib/convexApi';
 import { useM, useQ } from '@/lib/convexHooks';
 import { useMe } from '@/hooks/useMe';
-import { Avatar, EmptyState, Skeleton } from '@/components/ui';
+import { Avatar, Button, EmptyState, Skeleton, Textarea } from '@/components/ui';
 import { Markdown } from '@/features/chat/Markdown';
-import { IconPin, IconReply, IconThread } from '@/components/Icons';
+import { ReportDialog } from '@/features/moderation/ReportDialog';
+import { IconEdit, IconFlag, IconPin, IconReply, IconThread, IconTrash } from '@/components/Icons';
 
 const QUICK_EMOJI = ['👍', '🙏', '😂', '🔥', '👀', '❤️'];
 
@@ -74,6 +75,7 @@ export function MessageList({
   const toggleReaction = useM(api.messages.toggleReaction);
   const removeMessage = useM(api.messages.remove);
   const togglePin = useM(api.messages.togglePin);
+  const editMessage = useM(api.messages.edit);
 
   const typing = useQ<{ name: string }[]>(api.messages.typingIn, { channelId: channel.id }) ?? [];
 
@@ -167,6 +169,7 @@ export function MessageList({
                 onOpenThread={onOpenThread}
                 onDelete={() => void removeMessage({ messageId: message.id })}
                 onTogglePin={() => void togglePin({ messageId: message.id })}
+                onEdit={(content) => editMessage({ messageId: message.id, content })}
               />
             </div>
           );
@@ -198,6 +201,7 @@ function MessageRow({
   onOpenThread,
   onDelete,
   onTogglePin,
+  onEdit,
 }: {
   message: MessageDto;
   grouped: boolean;
@@ -208,8 +212,12 @@ function MessageRow({
   onOpenThread: (message: MessageDto) => void;
   onDelete: () => void;
   onTogglePin: () => void;
+  onEdit: (content: string) => Promise<unknown>;
 }) {
   const [showEmoji, setShowEmoji] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(message.content);
+  const [reporting, setReporting] = useState(false);
 
   if (message.deletedAt) {
     return (
@@ -291,12 +299,60 @@ function MessageRow({
             </div>
           )}
 
-          <div className="text-[0.9375rem] leading-relaxed text-chalk/95">
-            <Markdown content={message.content} />
-            {message.editedAt && (
-              <span className="ml-1 font-mono text-[0.625rem] text-faint">(edited)</span>
-            )}
-          </div>
+          {editing ? (
+            /* Inline rather than a dialog: editing a message is a small correction,
+               and moving it into a modal loses the surrounding conversation. */
+            <form
+              className="mt-1 space-y-2"
+              onSubmit={async (e) => {
+                e.preventDefault();
+                const next = draft.trim();
+                if (next && next !== message.content) await onEdit(next);
+                setEditing(false);
+              }}
+            >
+              <Textarea
+                rows={2}
+                value={draft}
+                autoFocus
+                onChange={(e) => setDraft(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Escape') {
+                    setDraft(message.content);
+                    setEditing(false);
+                  }
+                  if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
+                    e.currentTarget.form?.requestSubmit();
+                  }
+                }}
+              />
+              <div className="flex items-center gap-2">
+                <Button type="submit" size="sm">
+                  Save
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => {
+                    setDraft(message.content);
+                    setEditing(false);
+                  }}
+                >
+                  Cancel
+                </Button>
+                <span className="text-xs text-faint">Escape to cancel · Enter to save</span>
+              </div>
+            </form>
+          ) : (
+            <div className="text-[0.9375rem] leading-relaxed text-chalk/95">
+              <Markdown content={message.content} />
+              {message.editedAt && (
+                <span className="ml-1 font-mono text-[0.625rem] text-faint">(edited)</span>
+              )}
+            </div>
+          )}
 
           {message.attachments.length > 0 && (
             <div className="mt-2 flex flex-wrap gap-2">
@@ -388,15 +444,41 @@ function MessageRow({
                   <IconPin className={cn('h-3.5 w-3.5', message.isPinned && 'text-clubs')} />
                 </IconButton>
               )}
+              {/* Editing is author-only server-side, and anonymous posts are left
+                  alone: an edited anonymous message is a way to leak who wrote it. */}
+              {isMine && message.author.kind === 'user' && (
+                <IconButton
+                  label="Edit message"
+                  onClick={() => {
+                    setDraft(message.content);
+                    setEditing(true);
+                  }}
+                >
+                  <IconEdit className="h-3.5 w-3.5" />
+                </IconButton>
+              )}
+              {!isMine && (
+                <IconButton label="Report message" onClick={() => setReporting(true)}>
+                  <IconFlag className="h-3.5 w-3.5" />
+                </IconButton>
+              )}
               {(isMine || canModerate) && (
                 <IconButton label="Delete message" onClick={onDelete}>
-                  <span className="text-xs">🗑</span>
+                  <IconTrash className="h-3.5 w-3.5" />
                 </IconButton>
               )}
             </>
           )}
         </div>
       </div>
+
+      <ReportDialog
+        open={reporting}
+        onClose={() => setReporting(false)}
+        targetType="MESSAGE"
+        targetId={message.id}
+        context={message.content}
+      />
     </article>
   );
 }

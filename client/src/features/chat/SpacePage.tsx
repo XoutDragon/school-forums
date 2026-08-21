@@ -5,6 +5,7 @@ import { api } from '@/lib/convexApi';
 import { useM, useQ } from '@/lib/convexHooks';
 import { useUi } from '@/stores/ui';
 import { Avatar, Badge, Skeleton } from '@/components/ui';
+import { ConfirmDialog } from '@/components/ui/overlays';
 import { MessageList, type ChannelDto, type MessageDto } from '@/features/chat/MessageList';
 import { Composer } from '@/features/chat/Composer';
 import { ThreadPanel } from '@/features/chat/ThreadPanel';
@@ -16,6 +17,7 @@ import {
   IconHelp,
   IconIncognito,
   IconMegaphone,
+  IconLogout,
   IconPin,
   IconSettings,
   IconSpeaker,
@@ -90,6 +92,7 @@ export function SpacePage() {
   const { memberListOpen, toggleMemberList } = useUi();
   const [threadRoot, setThreadRoot] = useState<MessageDto | null>(null);
   const [pinsOpen, setPinsOpen] = useState(false);
+  const [leaving, setLeaving] = useState(false);
 
   const space = useQ<SpaceDetail>(api.spaces.get, spaceId ? { spaceId } : 'skip');
   const members = useQ<Member[]>(api.spaces.members, spaceId ? { spaceId } : 'skip');
@@ -98,6 +101,7 @@ export function SpacePage() {
     spaceId ? { spaceId } : 'skip',
   );
   const markRead = useM(api.messages.markChannelRead);
+  const leaveSpace = useM(api.spaces.leave);
 
   const channels = space?.channels ?? [];
   const active = useMemo(
@@ -154,16 +158,30 @@ export function SpacePage() {
                 {space.type.toLowerCase().replace('_', ' ')} · {space.memberCount} members
               </p>
             </div>
-            {canManage && (
-              <Link
-                to={`/spaces/${space.id}/settings`}
-                aria-label="Space settings"
-                title="Space settings"
-                className="mt-0.5 shrink-0 rounded-md p-1 text-dim transition hover:bg-raised hover:text-chalk"
-              >
-                <IconSettings className="h-4 w-4" />
-              </Link>
-            )}
+            <div className="mt-0.5 flex shrink-0 items-center gap-0.5">
+              {canManage && (
+                <Link
+                  to={`/spaces/${space.id}/settings`}
+                  aria-label="Space settings"
+                  title="Space settings"
+                  className="rounded-md p-1 text-dim transition hover:bg-raised hover:text-chalk"
+                >
+                  <IconSettings className="h-4 w-4" />
+                </Link>
+              )}
+              {/* Owners cannot leave — the server refuses, so offering it here would
+                  be a button that only ever produces an error. */}
+              {space.myRole && space.myRole !== 'OWNER' && (
+                <button
+                  onClick={() => setLeaving(true)}
+                  aria-label="Leave space"
+                  title="Leave space"
+                  className="rounded-md p-1 text-dim transition hover:bg-raised hover:text-events"
+                >
+                  <IconLogout className="h-4 w-4" />
+                </button>
+              )}
+            </div>
           </div>
 
           {!space.isPublished && (
@@ -268,6 +286,19 @@ export function SpacePage() {
         />
       )}
       {panel === 'members' && <MemberList members={members} />}
+
+      <ConfirmDialog
+        open={leaving}
+        onClose={() => setLeaving(false)}
+        title={`Leave ${space.name}?`}
+        body="You lose access to its channels and stop seeing it in your rail. Your messages stay. You can rejoin any time if it is public."
+        confirmLabel="Leave space"
+        onConfirm={async () => {
+          await leaveSpace({ spaceId: space.id });
+          setLeaving(false);
+          navigate('/');
+        }}
+      />
     </div>
   );
 }
