@@ -1,0 +1,7 @@
+node_modules/
+dist/
+build/
+
+# Written by `npx convex dev` and checked in for CI. Formatting it would churn the
+# diff every time it is regenerated, and the tool would overwrite the result anyway.
+convex/_generated/

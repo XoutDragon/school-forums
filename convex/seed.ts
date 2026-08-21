@@ -1157,12 +1157,14 @@ export const run = mutation(async (ctx) => {
     });
 
     const channels: any[] = [];
-    for (const [i, [name, type]] of ([
-      ['general', 'TEXT'],
-      ['assignments', 'TEXT'],
-      ['resources', 'RESOURCES'],
-      ['study-hall', 'VOICE_STUB'],
-    ] as const).entries()) {
+    for (const [i, [name, type]] of (
+      [
+        ['general', 'TEXT'],
+        ['assignments', 'TEXT'],
+        ['resources', 'RESOURCES'],
+        ['study-hall', 'VOICE_STUB'],
+      ] as const
+    ).entries()) {
       const ch = await ctx.db.insert('channels', {
         spaceId: space,
         name,
@@ -1230,11 +1232,13 @@ export const run = mutation(async (ctx) => {
     });
 
     const channels: any[] = [];
-    for (const [i, [name, type]] of ([
-      ['announcements', 'ANNOUNCEMENT'],
-      ['general', 'TEXT'],
-      ['planning', 'TEXT'],
-    ] as const).entries()) {
+    for (const [i, [name, type]] of (
+      [
+        ['announcements', 'ANNOUNCEMENT'],
+        ['general', 'TEXT'],
+        ['planning', 'TEXT'],
+      ] as const
+    ).entries()) {
       const ch = await ctx.db.insert('channels', {
         spaceId: space,
         name,

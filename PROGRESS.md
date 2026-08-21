@@ -244,21 +244,30 @@ npm test                           5 passed
 esbuild parse of all 25 convex modules   clean
 ```
 
-**Not checked, and why.** `convex/_generated/` is produced by `npx convex dev`,
-which needs an authenticated Convex login through a browser. Without it:
+`convex/_generated/` is now checked in, so the backend typecheck above is a **real**
+one — `dataModel.d.ts` derives from `schema.ts` and `api.d.ts` from the function
+modules themselves, which means every `ctx.db` insert, patch and index call is
+checked against the actual schema. The schema also pushed successfully, since
+codegen lists every module including the ones added here.
 
-- The client typecheck above ran against a **loose local stub** of the generated
-  API, so React and TypeScript errors were caught but **Convex argument and return
-  types were not verified**. Expect type errors on the first real `convex dev`.
-- No Convex function has been executed. The schema has not been applied.
-- Only screens that make no queries could be rendered: the design system and the
-  setup wizard were verified visually in both themes. Everything else stops at a
-  loading state.
+**Still not checked:**
 
-The deployment named in `.env.local` responds but reports
-`Could not find public function for 'auth:me'`, i.e. these functions are not on it
-yet.
+- **Client call arguments.** `useQ` / `useM` are deliberately `any` passthroughs
+  (see the note in `client/src/lib/convexHooks.ts`), so the compiler does not verify
+  the arguments a component passes to a Convex function. `check_api.py` in the
+  scratchpad verifies that every `api.<module>.<fn>` resolves to a real export, but
+  not the shape of its arguments. Typing those wrappers properly is the obvious
+  next improvement.
+- **Nothing has been executed against data.** No function has been run, no seed
+  applied, no flow clicked through end to end.
+- **Only query-free screens have been seen.** The design system, the setup wizard
+  and the error boundary were verified in a browser, in both themes. Everything
+  else stops at a loading state locally.
 
-**Next person to run this should expect:** first-run type errors from the generated
-API, and a schema push that may conflict with whatever documents that deployment
-already holds.
+**Two things to know about the checked-in `_generated/`:** it is derived rather than
+snapshotted, so schema and signature changes follow automatically — but the _list of
+modules_ is fixed at generation time, so adding a new `convex/*.ts` file means
+re-running `npx convex dev` before the client can import it. And
+`package-lock.json` was removed to fix a Vercel install, so `npm install` no longer
+pins transitive versions; the `overrides` block in `package.json` is the only thing
+holding the vite version steady.
