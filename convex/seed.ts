@@ -767,7 +767,7 @@ const BADGES = [
   ['club-hopper', 'Club Hopper', '🎪', 'Joined 3 clubs.'],
   ['early-bird', 'Early Bird', '🐦', "RSVP'd to 5 events."],
   ['founder', 'Founder', '🏛️', 'Started a study group that filled.'],
-];
+] as const;
 
 const LOOKING_FOR = [
   'STUDY_PARTNER' as const,
@@ -1157,12 +1157,12 @@ export const run = mutation(async (ctx) => {
     });
 
     const channels: any[] = [];
-    for (const [i, [name, type]] of [
+    for (const [i, [name, type]] of ([
       ['general', 'TEXT'],
       ['assignments', 'TEXT'],
       ['resources', 'RESOURCES'],
       ['study-hall', 'VOICE_STUB'],
-    ].entries()) {
+    ] as const).entries()) {
       const ch = await ctx.db.insert('channels', {
         spaceId: space,
         name,
@@ -1230,11 +1230,11 @@ export const run = mutation(async (ctx) => {
     });
 
     const channels: any[] = [];
-    for (const [i, [name, type]] of [
+    for (const [i, [name, type]] of ([
       ['announcements', 'ANNOUNCEMENT'],
       ['general', 'TEXT'],
       ['planning', 'TEXT'],
-    ].entries()) {
+    ] as const).entries()) {
       const ch = await ctx.db.insert('channels', {
         spaceId: space,
         name,
@@ -1576,7 +1576,7 @@ export const run = mutation(async (ctx) => {
   const mentors = pickN(userIds.slice(1), 6);
   for (let i = 0; i < mentors.length; i++) {
     await ctx.db.insert('mentorProfiles', {
-      userId: mentors[i],
+      userId: mentors[i]!,
       isMentor: true,
       capacity: int(2, 4),
       topics: MENTOR_TOPICS[i % MENTOR_TOPICS.length] ?? [],

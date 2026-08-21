@@ -14,7 +14,6 @@ Thumbs.db
 .vscode/*
 !.vscode/extensions.json
 .claude/
-convex/_generated/
 
 # TypeScript incremental build cache
 *.tsbuildinfo
